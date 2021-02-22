@@ -114,5 +114,13 @@
     <ClCompile Include="..\src\TimeDate.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="ResultSaver.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="ResultSaver.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
