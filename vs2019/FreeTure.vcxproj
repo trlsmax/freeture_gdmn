@@ -179,14 +179,11 @@
     <ClCompile Include="..\src\main.cpp" />
     <ClCompile Include="..\src\Mask.cpp" />
     <ClCompile Include="..\src\PixFmtConv.cpp" />
+    <ClCompile Include="..\src\ResultSaver.cpp" />
     <ClCompile Include="..\src\SaveImg.cpp" />
     <ClCompile Include="..\src\Stack.cpp" />
     <ClCompile Include="..\src\StackThread.cpp" />
     <ClCompile Include="..\src\TimeDate.cpp" />
-    <ClCompile Include="ResultSaver.cpp" />
-  </ItemGroup>
-  <ItemGroup>
-    <ClInclude Include="ResultSaver.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
