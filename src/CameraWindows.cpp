@@ -33,9 +33,9 @@
 */
 
 #include "CameraWindows.h"
-using namespace cv;
 
 #ifdef WINDOWS
+using namespace cv;
 
 CameraWindows::CameraWindows() {
 

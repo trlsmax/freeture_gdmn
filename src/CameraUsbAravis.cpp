@@ -40,7 +40,7 @@
 #include <spdlog/spdlog.h>
 #include <date/date.h>
 
-#ifdef LINUX
+#if 0
 
 CameraUsbAravis::CameraUsbAravis(bool shift) :
         camera(NULL), mStartX(0), mStartY(0), mWidth(0), mHeight(0), fps(0), gainMin(0.0), gainMax(0.0),

@@ -221,6 +221,7 @@ bool Device::createDevicesWith(CamSdkType sdk)
 #endif
         }
             break;
+#if 0
         case ARAVIS : {
 #ifdef LINUX
             mCam = new CameraGigeAravis(mShiftBits);
@@ -233,6 +234,7 @@ bool Device::createDevicesWith(CamSdkType sdk)
 #endif
         }
             break;
+#endif
         case PYLONGIGE : {
 #ifdef WINDOWS
             //mCam = new CameraGigePylon();
@@ -331,6 +333,7 @@ void Device::listDevices(bool printInfos)
     }
     delete mCam;
 #else
+#if 0
     // ARAVIS
     createDevicesWith(ARAVIS);
     listCams = mCam->getCamerasList();
@@ -358,6 +361,7 @@ void Device::listDevices(bool printInfos)
         mNbDev++;
     }
     delete mCam;
+#endif
 
     // V4L2
     createDevicesWith(V4L2);

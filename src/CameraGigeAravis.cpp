@@ -39,7 +39,7 @@
 #include <spdlog/spdlog.h>
 #include <fstream>
 
-#ifdef LINUX
+#if 0
 
     CameraGigeAravis::CameraGigeAravis(bool shift):
     camera(NULL), mStartX(0), mStartY(0), mWidth(0), mHeight(0), fps(0), gainMin(0.0), gainMax(0.0),

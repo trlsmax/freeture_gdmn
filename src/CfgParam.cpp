@@ -276,7 +276,6 @@ void CfgParam::loadLogParam()
             } catch (std::exception &ex) {
                 param.log.errormsg.push_back("- LOG_PATH : Can't create Log Path directory.");
                 e = true;
-                OutputDebugStringA(ex.what());
             }
         }
     }
