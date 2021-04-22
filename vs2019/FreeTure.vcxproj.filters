@@ -114,7 +114,7 @@
     <ClCompile Include="..\src\TimeDate.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="..\src\ResultSaver.cpp">
+    <ClCompile Include="..\libs\date\tz.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>

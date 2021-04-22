@@ -140,10 +140,10 @@ void nonblock(int state)
 void init_log(string path)
 {
     spdlog::default_logger()->set_pattern("%v");
-    auto logger = spdlog::daily_logger_mt("mt_logger", "main.txt", 0, 0);
-    auto acq_logger = spdlog::daily_logger_mt("acq_logger", "acq.txt", 0, 0);
-    auto det_logger = spdlog::daily_logger_mt("det_logger", "det.txt", 0, 0);
-    auto stack_logger = spdlog::daily_logger_mt("stack_logger", "stack.txt", 0, 0);
+    auto logger = spdlog::daily_logger_mt("mt_logger", path + "/main.txt", 0, 0);
+    auto acq_logger = spdlog::daily_logger_mt("acq_logger", path + "/acq.txt", 0, 0);
+    auto det_logger = spdlog::daily_logger_mt("det_logger", path + "/det.txt", 0, 0);
+    auto stack_logger = spdlog::daily_logger_mt("stack_logger", path + "/stack.txt", 0, 0);
 }
 
 int main(int argc, const char** argv)
@@ -173,8 +173,6 @@ int main(int argc, const char** argv)
         ("framestats", "Print frame stats in various threads. Useful when running in foreground, disabled by default.");
 
     auto vm = options.parse(argc, argv);
-    init_log("");
-    auto logger = spdlog::get("mt_logger");
 
     try {
         int mode = -1;
@@ -194,6 +192,12 @@ int main(int argc, const char** argv)
         bool listFormats = false;
         bool frameStats = false;
 
+		if (vm.count("cfg"))
+			configPath = vm["cfg"].as<string>();
+
+		CfgParam cfg(configPath);
+		init_log(cfg.getLogParam().LOG_PATH);
+		auto logger = spdlog::get("mt_logger");
         ///%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         ///%%%%%%%%%%%%%%%%%%%%%%% PRINT FREETURE VERSION
         ///%%%%%%%%%%%%%%%%%%%%%%%%
@@ -243,8 +247,6 @@ int main(int argc, const char** argv)
 
         } else if (vm.count("mode")) {
             mode = vm["mode"].as<int>();
-            if (vm.count("cfg"))
-                configPath = vm["cfg"].as<string>();
             if (vm.count("time"))
                 executionTime = vm["time"].as<int>();
 
@@ -252,7 +254,6 @@ int main(int argc, const char** argv)
             /// --------------------- LOAD FREETURE PARAMETERS
             /// -------------------
             /// ------------------------------------------------------------------
-            CfgParam cfg(configPath);
 
             switch (mode) {
             case 1:

@@ -282,15 +282,26 @@ bool CameraV4l2::createDevice(int id)
         return false;
     }
 
+    //acqStop();
+
+    struct v4l2_requestbuffers req;
+    memset(&req, 0, sizeof(req));
+    req.count = 0;
+    req.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    req.memory = V4L2_MEMORY_MMAP;
+    xioctl(fd, VIDIOC_REQBUFS, &req);
+
     getExposureBounds(expMin, expMax);
     getGainBounds(gainMin, gainMax);
 
+#if 0
     memset(&mFormat, 0, sizeof(mFormat));
     mFormat.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     // Preserve original settings as set by v4l2-ctl for example
     if (-1 == xioctl(fd, VIDIOC_G_FMT, &mFormat)) {
         return false;
     }
+#endif
 
     return true;
 }
@@ -463,10 +474,18 @@ bool CameraV4l2::grabInitialization()
 
     // Set some parameters...SIZE
 
-    if (!setSize())
-        return false;
+    //if (!setSize())
+    //    return false;
 
-    if (-1 == xioctl(fd, VIDIOC_S_FMT, &mFormat)) {
+    memset(&mFormat, 0, sizeof(mFormat));
+    mFormat.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    mFormat.fmt.pix.width = mWidth;
+	mFormat.fmt.pix.height = mHeight;
+	mFormat.fmt.pix.pixelformat = V4L2_PIX_FMT_YUYV;
+	mFormat.fmt.pix.field = V4L2_FIELD_ANY;
+	mFormat.fmt.pix.bytesperline = ((mWidth + (32 - 1)) & ~(32 - 1));
+
+    if (-1 == xioctl(fd, VIDIOC_TRY_FMT, &mFormat)) {
         cout << "Fail to set fmt." << endl;
         return false;
     }
@@ -605,7 +624,7 @@ void CameraV4l2::acqStop()
 bool CameraV4l2::grabImage(Frame &newFrame)
 {
     unsigned char *ImageBuffer = NULL;
-    Mat img = Mat(mFormat.fmt.pix.height, mFormat.fmt.pix.width, CV_8UC1, Scalar(0));
+    //Mat img = Mat(mFormat.fmt.pix.height, mFormat.fmt.pix.width, CV_8UC1, Scalar(0));
     size_t s = mFormat.fmt.pix.width * mFormat.fmt.pix.height;
     bool grabSuccess = false;
 
@@ -1135,7 +1154,7 @@ bool CameraV4l2::setExposureTime(double val)
 
 bool CameraV4l2::setGain(int val)
 {
-    if (gainMax > 0 && gainMin > 0 && val >= gainMin && val <= gainMax) {
+    if (gainMax > 0 && gainMin >= 0 && val >= gainMin && val <= gainMax) {
 
         struct v4l2_queryctrl queryctrl;
         struct v4l2_control control;
@@ -1363,10 +1382,11 @@ void CameraV4l2::errno_exit(const char *s)
 
 int CameraV4l2::xioctl(int fh, int request, void *arg)
 {
-    int r;
+    int retries = 4;
+    int r = -1;
     do {
         r = ioctl(fh, request, arg);
-    } while (-1 == r && EINTR == errno);
+    } while (r && retries-- && EINTR == errno);
     return r;
 }
 

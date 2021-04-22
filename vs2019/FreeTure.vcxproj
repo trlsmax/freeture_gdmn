@@ -150,6 +150,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="..\libs\date\tz.cpp" />
     <ClCompile Include="..\src\AcqSchedule.cpp" />
     <ClCompile Include="..\src\AcqThread.cpp" />
     <ClCompile Include="..\src\CameraFrames.cpp" />
@@ -179,7 +180,6 @@
     <ClCompile Include="..\src\main.cpp" />
     <ClCompile Include="..\src\Mask.cpp" />
     <ClCompile Include="..\src\PixFmtConv.cpp" />
-    <ClCompile Include="..\src\ResultSaver.cpp" />
     <ClCompile Include="..\src\SaveImg.cpp" />
     <ClCompile Include="..\src\Stack.cpp" />
     <ClCompile Include="..\src\StackThread.cpp" />

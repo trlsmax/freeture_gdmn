@@ -16,7 +16,9 @@ file(
 	GLOB_RECURSE
 	SRC_FILES
 	../src/*
+	../libs/date/tz.cpp
 )
+list(FILTER SRC_FILES EXCLUDE REGEX ".*ResultSaver.cpp$")
 message("> SOURCES : " ${SRC_FILES})
 #------------------------------------------------
 # To see the command line CMake produces :
@@ -147,6 +149,21 @@ IF(${OperatingSystem} MATCHES "Windows")
 ELSE(${OperatingSystem} MATCHES "Windows")
 	IF(${OperatingSystem} MATCHES "Linux")
 
+    # CFITSIO.
+    message("> Searching cfitsio...")
+    find_package(CFITSIO)
+
+    if(CFITSIO_FOUND)
+       message("> Success to find cfitsio.")
+       link_directories(${CFITSIO_LIBRARY_DIRS})
+       message("CFITSIO_INCLUDE_DIR : " ${CFITSIO_INCLUDE_DIR} )
+       message("CFITSIO_LIBRARIES : " ${CFITSIO_LIBRARIES} )
+       include_directories(${CFITSIO_INCLUDE_DIR})
+       target_link_libraries( ${EXE_NAME} ${CFITSIO_LIBRARIES} )
+    else(NOT CFITSIO_FOUND)
+       message("> Fail to find cfitsio.")
+    endif(CFITSIO_FOUND)
+
 
 	# Not include Pylon for Basler Cameras on Windows.
 	#OPTION(USE_PYLON "Include Pylon for Basler Cameras on Windows" OFF)
@@ -158,43 +175,43 @@ ELSE(${OperatingSystem} MATCHES "Windows")
 	target_link_libraries(${EXE_NAME} ${CMAKE_THREAD_LIBS_INIT})
 
 	# glib-2.0
-	find_package( GLIB2 REQUIRED)
-	message ("GLIB2_INCLUDE_DIR  : " ${GLIB2_INCLUDE_DIR})
-	message ("GLIB2_LIBRARIES : " ${GLIB2_LIBRARIES})
-	include_directories(${GLIB2_INCLUDE_DIR})
-	#link_directories(${GLIB2_LIBRARY_DIRS})
-	target_link_libraries(${EXE_NAME} ${GLIB2_LIBRARIES})
+    #find_package( GLIB2 REQUIRED)
+	#message ("GLIB2_INCLUDE_DIR  : " ${GLIB2_INCLUDE_DIR})
+	#message ("GLIB2_LIBRARIES : " ${GLIB2_LIBRARIES})
+	#include_directories(${GLIB2_INCLUDE_DIR})
+	##link_directories(${GLIB2_LIBRARY_DIRS})
+	#target_link_libraries(${EXE_NAME} ${GLIB2_LIBRARIES})
 
 	# gobject-2.0
 	# https://gitorious.org/phonon/phonon/source/e2bfb1fd2cb5721d54573cd8c9ff361e615d1c00:cmake/FindGLIB2.cmake#L52
-	find_package( GObject REQUIRED)
-	message ("GOBJECT_INCLUDE_DIR : " ${GOBJECT_INCLUDE_DIR})
-	message ("GOBJECT_LIBRARIES : " ${GOBJECT_LIBRARIES})
-	include_directories(${GOBJECT_INCLUDE_DIR})
-	#link_directories(${GOBJECT_LIBRARY_DIRS})
-	target_link_libraries(${EXE_NAME} ${GOBJECT_LIBRARIES})
+    #find_package( GObject REQUIRED)
+	#message ("GOBJECT_INCLUDE_DIR : " ${GOBJECT_INCLUDE_DIR})
+	#message ("GOBJECT_LIBRARIES : " ${GOBJECT_LIBRARIES})
+	#include_directories(${GOBJECT_INCLUDE_DIR})
+	##link_directories(${GOBJECT_LIBRARY_DIRS})
+	#target_link_libraries(${EXE_NAME} ${GOBJECT_LIBRARIES})
 
 	# Aravis
 	# https://code.google.com/p/tiy/source/browse/trunk/src/Findaravis.cmake
-	find_package( aravis REQUIRED)
-	message ("ARAVIS_FOUND : " ${aravis_FOUND})
-	message ("ARAVIS_INCLUDE_DIR : " ${aravis_INCLUDE_DIR})
-	message ("ARAVIS_LIBRARIES : " ${aravis_LIBRARIES})
-	message ("aravis_LIBRARY : " ${aravis_LIBRARY})
-	include_directories(${aravis_INCLUDE_DIR})
-	#link_directories(${ARAVIS_LIBRARY_DIRS})
-	target_link_libraries(${EXE_NAME} ${aravis_LIBRARIES})
+    #find_package( aravis REQUIRED)
+	#message ("ARAVIS_FOUND : " ${aravis_FOUND})
+	#message ("ARAVIS_INCLUDE_DIR : " ${aravis_INCLUDE_DIR})
+	#message ("ARAVIS_LIBRARIES : " ${aravis_LIBRARIES})
+	#message ("aravis_LIBRARY : " ${aravis_LIBRARY})
+	#include_directories(${aravis_INCLUDE_DIR})
+	##link_directories(${ARAVIS_LIBRARY_DIRS})
+	#target_link_libraries(${EXE_NAME} ${aravis_LIBRARIES})
 
-	# Openssl
-	include(FindOpenSSL)
-	find_package( OpenSSL REQUIRED)
-	message ("OPENSSL_FOUND : " ${OPENSSL_FOUND})
-	message ("OPENSSL_INCLUDE_DIR : " ${OPENSSL_INCLUDE_DIR})
-	message ("OPENSSL_LIBRARIES : " ${OPENSSL_LIBRARIES})
-	message ("OPENSSL_LIBRARY : " ${OPENSSL_LIBRARY})
-	include_directories(${OPENSSL_INCLUDE_DIR})
-	#link_directories(${OPENSSL_LIBRARY_DIRS})
-	target_link_libraries(${EXE_NAME} ${OPENSSL_LIBRARIES})
+    ## Openssl
+	#include(FindOpenSSL)
+	#find_package( OpenSSL REQUIRED)
+	#message ("OPENSSL_FOUND : " ${OPENSSL_FOUND})
+	#message ("OPENSSL_INCLUDE_DIR : " ${OPENSSL_INCLUDE_DIR})
+	#message ("OPENSSL_LIBRARIES : " ${OPENSSL_LIBRARIES})
+	#message ("OPENSSL_LIBRARY : " ${OPENSSL_LIBRARY})
+	#include_directories(${OPENSSL_INCLUDE_DIR})
+	##link_directories(${OPENSSL_LIBRARY_DIRS})
+	#target_link_libraries(${EXE_NAME} ${OPENSSL_LIBRARIES})
 
 	# V4L2
 	include(FindV4L2)

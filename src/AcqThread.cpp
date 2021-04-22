@@ -204,10 +204,10 @@ void AcqThread::run()
 
                 // Grab a frame.
                 if (mDevice->runContinuousCapture(newFrame)) {
-                    logger->info("============= FRAME {} =============",
+                    logger->debug("============= FRAME {} =============",
                         newFrame.mFrameNumber);
                     if (printFrameStats) {
-                        spdlog::info("============= FRAME {} =============",
+                        spdlog::debug("============= FRAME {} =============",
                             newFrame.mFrameNumber);
                     }
 
@@ -536,10 +536,10 @@ void AcqThread::run()
 
                 tacq = (((double)getTickCount() - tacq) / getTickFrequency()) * 1000;
                 if (printFrameStats) {
-                    spdlog::info("\033[6;0H [ TIME ACQ ] : {} ms ~cFPS({})",
+                    spdlog::debug("\033[6;0H [ TIME ACQ ] : {} ms ~cFPS({})",
                         tacq, (1.0 / (tacq / 1000.0)));
                 }
-                logger->info(" [ TIME ACQ ] : {}", tacq);
+                logger->debug(" [ TIME ACQ ] : {}", tacq);
                 mMustStopMutex.lock();
                 stop = mMustStop;
                 mMustStopMutex.unlock();

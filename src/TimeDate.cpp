@@ -36,6 +36,7 @@
 #include "TimeDate.h"
 #include <ctime>
 #include <date/date.h>
+#include <date/tz.h>
 #include <iomanip>
 #include <string>
 
@@ -313,8 +314,8 @@ string TimeDate::getYYYYMMDDfromDateString(string date)
 string TimeDate::getYYYYMMDDThhmmss(Date date)
 {
     std::tm t = std::tm();
-    t.tm_year = date.year;
-    t.tm_mon = date.month;
+    t.tm_year = date.year - 1900;
+    t.tm_mon = date.month - 1;
     t.tm_mday = date.day;
     t.tm_hour = date.hours;
     t.tm_min = date.minutes;
@@ -329,8 +330,8 @@ string TimeDate::getYYYYMMDDThhmmss(Date date)
 string TimeDate::getYYYYMMDD(Date date)
 {
     std::tm t = std::tm();
-    t.tm_year = date.year;
-    t.tm_mon = date.month;
+    t.tm_year = date.year - 1900;
+    t.tm_mon = date.month - 1;
     t.tm_mday = date.day;
 
     stringstream ss;
@@ -342,8 +343,8 @@ string TimeDate::getYYYYMMDD(Date date)
 string TimeDate::getYYYY_MM_DD(Date date)
 {
     std::tm t = std::tm();
-    t.tm_year = date.year;
-    t.tm_mon = date.month;
+    t.tm_year = date.year - 1900;
+    t.tm_mon = date.month - 1;
     t.tm_mday = date.day;
 
     stringstream ss;
@@ -355,8 +356,8 @@ string TimeDate::getYYYY_MM_DD(Date date)
 string TimeDate::getYYYY_MM_DD_hhmmss(Date date)
 {
     std::tm t = std::tm();
-    t.tm_year = date.year;
-    t.tm_mon = date.month;
+    t.tm_year = date.year - 1900;
+    t.tm_mon = date.month - 1;
     t.tm_mday = date.day;
     t.tm_hour = date.hours;
     t.tm_min = date.minutes;
@@ -411,8 +412,8 @@ string TimeDate::getYYYYMMDDThhmmss(string date)
 int TimeDate::secBetweenTwoDates(Date d1, Date d2)
 {
     std::tm t1 = std::tm();
-    t1.tm_year = d1.year;
-    t1.tm_mon = d1.month;
+    t1.tm_year = d1.year - 1900;
+    t1.tm_mon = d1.month - 1;
     t1.tm_mday = d1.day;
     t1.tm_hour = d1.hours;
     t1.tm_min = d1.minutes;
@@ -420,8 +421,8 @@ int TimeDate::secBetweenTwoDates(Date d1, Date d2)
     std::time_t tt1 = std::mktime(&t1);
 
     std::tm t2 = std::tm();
-    t2.tm_year = d2.year;
-    t2.tm_mon = d2.month;
+    t2.tm_year = d2.year - 1900;
+    t2.tm_mon = d2.month - 1;
     t2.tm_mday = d2.day;
     t2.tm_hour = d2.hours;
     t2.tm_min = d2.minutes;
@@ -430,13 +431,13 @@ int TimeDate::secBetweenTwoDates(Date d1, Date d2)
 
     std::chrono::system_clock::time_point tp1 = std::chrono::system_clock::from_time_t(tt1);
     std::chrono::system_clock::time_point tp2 = std::chrono::system_clock::from_time_t(tt2);
-    std::chrono::system_clock::duration d = tp2 - tp1;
-
-    return d.count();
+    return std::chrono::duration_cast<std::chrono::milliseconds>(tp2 - tp1).count() / 1000;
 }
 
 string TimeDate::IsoExtendedStringNow()
 {
-    auto now = chrono::system_clock::now();
-    return date::format("%FT%T", date::floor<std::chrono::milliseconds>(now));
+    //auto now = chrono::system_clock::now();
+    //return date::format("%FT%T", date::floor<std::chrono::milliseconds>(now));
+    auto t = make_zoned(date::current_zone(), chrono::system_clock::now());
+    return date::format("%FT%T", t.get_local_time());
 }

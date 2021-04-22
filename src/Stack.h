@@ -113,7 +113,7 @@ class Stack {
         */
         int getNbFramesStacked(){return curFrames;};
 
-        cv::Mat getStack() {return stack;};
+        cv::Mat& getStack() {return stack;};
 
         /**
         * Reduce stack in float 32 bits to 8 or 16 bits.

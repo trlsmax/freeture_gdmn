@@ -54,7 +54,7 @@ void Stack::addFrame(Frame &i)
     try {
         if (TimeDate::getYYYYMMDD(i.mDate) != "00000000") {
             if (curFrames == 0) {
-                stack = Mat::zeros(i.mImg.rows, i.mImg.cols, CV_32FC1);
+                stack = Mat::zeros(i.mImg.rows, i.mImg.cols, CV_8UC1);
                 gainFirstFrame = i.mGain;
                 expFirstFrame = i.mExposure;
                 mDateFirstFrame = i.mDate;
@@ -65,9 +65,19 @@ void Stack::addFrame(Frame &i)
             if (expFirstFrame != i.mExposure)
                 varExpTime = true;
             sumExpTime += i.mExposure;
-            Mat curr = Mat::zeros(i.mImg.rows, i.mImg.cols, CV_32FC1);
-            i.mImg.convertTo(curr, CV_32FC1);
-            cv::accumulate(curr, stack);
+            //cv::accumulate(curr, stack);
+            Mat& curr = i.mImg;
+			unsigned char *ptr = NULL;
+			unsigned char *ptr2 = NULL;
+			for (int i = 0; i < stack.rows; i++) {
+				ptr = stack.ptr<unsigned char>(i);
+				ptr2 = curr.ptr<unsigned char>(i);
+				for (int j = 0; j < stack.cols; j++) {
+                    if (ptr2[j] > ptr[j]) {
+                        ptr[j] = ptr2[j];
+                    }
+				}
+			}
             curFrames++;
             mDateLastFrame = i.mDate;
         }
