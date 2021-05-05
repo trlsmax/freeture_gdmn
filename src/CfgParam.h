@@ -67,17 +67,17 @@ private :
 
     InputDeviceType inputType;
 
-    void loadDeviceID();
+    void loadDeviceID(cameraParam& cam, const toml::value& table);
 
     void loadDataParam();
 
     void loadLogParam();
 
-    void loadFramesParam();
+    void loadFramesParam(cameraParam& cam, const toml::value& table);
 
-    void loadVidParam();
+    void loadVidParam(cameraParam& cam, const toml::value& table);
 
-    void loadCamParam();
+    void loadCamParam(cameraParam& cam, const toml::value& table);
 
     void loadDetParam();
 

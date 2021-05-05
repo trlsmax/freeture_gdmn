@@ -36,124 +36,54 @@
 
 #include "CfgParam.h"
 #include <spdlog/spdlog.h>
+#include <toml.hpp>
 using namespace cv;
 
 CfgParam::CfgParam(string cfgFilePath)
 {
-    // Initialize parameters.
-    showErrors = false;
-    pair<int, bool> var1(-1, false);
-    pair<pair<int, bool>, string> var2(var1, "");
-    param.DEVICE_ID = var2;
-    param.data.status = false;
-    param.camInput.status = false;
-    param.det.status = false;
-    param.fitskeys.status = false;
-    param.framesInput.status = false;
-    param.log.status = false;
-    param.vidInput.status = false;
-    param.st.status = false;
-    param.station.status = false;
-    param.mail.status = false;
-
-    param.data.DATA_PATH = "./";
-    param.data.FITS_COMPRESSION = false;
-    param.data.FITS_COMPRESSION_METHOD = "[compress]";
-
-    param.log.LOG_ARCHIVE_DAY = 5;
-    param.log.LOG_PATH = "./";
-    param.log.LOG_SEVERITY = notification;
-    param.log.LOG_SIZE_LIMIT = 50;
-
-    vector<string> finput, vinput;
-    param.framesInput.INPUT_FRAMES_DIRECTORY_PATH = finput;
-    param.vidInput.INPUT_VIDEO_PATH = vinput;
-    param.framesInput.INPUT_TIME_INTERVAL = 0;
-    param.vidInput.INPUT_TIME_INTERVAL = 0;
-
-    param.camInput.ACQ_DAY_EXPOSURE = 0;
-    param.camInput.ACQ_DAY_GAIN = 0;
-    param.camInput.ACQ_FORMAT = MONO8;
-    param.camInput.ACQ_FPS = 30;
-    param.camInput.ACQ_HEIGHT = 480;
-    param.camInput.ACQ_NIGHT_EXPOSURE = 0;
-    param.camInput.ACQ_NIGHT_GAIN = 0;
-    param.camInput.ACQ_RES_CUSTOM_SIZE = false;
-    param.camInput.ACQ_STARTX = 0;
-    param.camInput.ACQ_STARTY = 0;
-    param.camInput.ACQ_WIDTH = 640;
-    param.camInput.ephem.EPHEMERIS_ENABLED = false;
-    param.camInput.ephem.SUNRISE_DURATION = 3600;
-    vector<int> sunrisetime, sunsettime;
-    sunrisetime.push_back(7);
-    sunrisetime.push_back(0);
-    sunsettime.push_back(22);
-    sunsettime.push_back(0);
-    param.camInput.ephem.SUNRISE_TIME = sunrisetime;
-    param.camInput.ephem.SUNSET_DURATION = 3600;
-    param.camInput.ephem.SUNSET_TIME = sunsettime;
-    param.camInput.EXPOSURE_CONTROL_FREQUENCY = 300;
-    param.camInput.EXPOSURE_CONTROL_SAVE_IMAGE = false;
-    param.camInput.EXPOSURE_CONTROL_SAVE_INFOS = false;
-    param.camInput.regcap.ACQ_REGULAR_ENABLED = false;
-    param.camInput.schcap.ACQ_SCHEDULE_ENABLED = false;
-    param.camInput.SHIFT_BITS = false;
-
-    param.det.ACQ_BUFFER_SIZE = 15;
-    param.det.ACQ_MASK_ENABLED = false;
-    param.det.DET_DEBUG = false;
-    param.det.DET_DEBUG_UPDATE_MASK = false;
-    param.det.DET_DOWNSAMPLE_ENABLED = true;
-    param.det.DET_ENABLED = false;
-
-    param.st.STACK_ENABLED = false;
-
-    param.mail.MAIL_DETECTION_ENABLED = false;
-
-    param.station.STATION_NAME = "STATION";
-    param.station.SITEELEV = 0.0;
-    param.station.SITELAT = 0.0;
-    param.station.SITELONG = 0.0;
-    param.station.GPS_LOCK = "N";
-
-    // Load parameters.
-
     ghc::filesystem::path pcfg(cfgFilePath);
     if (ghc::filesystem::exists(pcfg)) {
-        if (cfg.Load(cfgFilePath)) {
-            loadDeviceID();
-            loadDataParam();
-            loadLogParam();
+        try {
+            const auto cfg = toml::parse(cfgFilePath);
+            const auto cameras = toml::find<std::vector<toml::table>>(cfg, "Cameras");
+            param.cameras.resize(cameras.size());
+            for (size_t i = 0; i < cameras.size(); i++) {
+                cameraParam& cam = param.cameras[i];
+                loadDeviceID(cam, cameras[i]);
+				if (cam.DEVICE_ID.first.second) {
+					// Get input type according to device number.
+					Device *device = new Device();
+					device->setVerbose(false);
+					device->listDevices(false);
+					inputType = device->getDeviceType(device->getDeviceSdk(cam.DEVICE_ID.first.first));
+					delete device;
+					switch (inputType) {
+						case VIDEO :
+							loadVidParam(cam, cameras[i]);
+							break;
+						case SINGLE_FITS_FRAME :
+							loadFramesParam(cam, cameras[i]);
+							break;
+							// camera
+						case CAMERA :
+							loadCamParam(cam, cameras[i]);
+							break;
+					}
+				}
 
-            if (param.DEVICE_ID.first.second) {
-                // Get input type according to device number.
-                Device *device = new Device();
-                device->setVerbose(false);
-                device->listDevices(false);
-                inputType = device->getDeviceType(device->getDeviceSdk(param.DEVICE_ID.first.first));
-                delete device;
-                switch (inputType) {
-                    case VIDEO :
-                        loadVidParam();
-                        break;
-                    case SINGLE_FITS_FRAME :
-                        loadFramesParam();
-                        break;
-                        // camera
-                    case CAMERA :
-                        loadCamParam();
-                        break;
-                }
+				loadDetParam();
+				loadStackParam();
+				loadStackParam();
+				loadFitskeysParam();
             }
 
-            loadDetParam();
-            loadStackParam();
+            loadDataParam();
+            loadLogParam();
             loadStationParam();
-            loadFitskeysParam();
             loadMailParam();
-        } else {
-            emsg.push_back("Fail to load configuration file.");
-            cout << "Fail to load configuration file." << endl;
+        }
+        catch (toml::exception& e) {
+
         }
     } else {
         emsg.push_back("Configuration file path not exists : " + cfgFilePath);
@@ -161,64 +91,48 @@ CfgParam::CfgParam(string cfgFilePath)
     }
 }
 
-void CfgParam::loadDeviceID()
+void CfgParam::loadDeviceID(cameraParam& cam, const toml::value& table)
 {
     pair<int, bool> var1;
     pair<pair<int, bool>, string> var2;
-    param.DEVICE_ID = var2;
+    cam.DEVICE_ID = var2;
 
     Device *device = new Device();
     device->setVerbose(false);
     device->listDevices(false);
 
-    int cId;
+    int cId = -1;
     string cString;
-    bool failIntId = false, failStringId = false;
-    string failmsg = "- CAMERA_ID : ";
 
-    if (!cfg.Get("CAMERA_ID", cId)) {
-        failIntId = true;
-        failmsg += "Fail to get value. Probably not defined.\n";
-    }
-
-    if (!cfg.Get("CAMERA_ID", cString)) {
-        failStringId = true;
-        failmsg += "Fail to get value. Probably not defined.\n";
-    } else {
-        try {
+    if (table.contains("CAMERA_ID")) {
+        if (table.at("CAMERA_ID").is_integer()) {
+            cId = toml::find<int>(table, "CAMERA_ID");
+        }
+        else if (table.at("CAMERA_ID").is_string()) {
+            cString = toml::find<std::string>(table, "CAMERA_ID");
             EParser<CamSdkType> cam_string;
-            CamSdkType cType = cam_string.parseEnum("CAMERA_ID", cString);
+            CamSdkType cType = cam_string.parseEnum("CAMERA_ID", std::to_string(cId));
 
             if (cType == VIDEOFILE) {
                 cId = device->mNbDev - 2;
-            } else if (cType == FRAMESDIR) {
-                cId = device->mNbDev - 1;
-            } else {
-                failmsg += "Not correct input.\n";
-                failStringId = true;
             }
-
-        } catch (std::exception &ex) {
-            failmsg += string(ex.what());
-            failStringId = true;
+            else if (cType == FRAMESDIR) {
+                cId = device->mNbDev - 1;
+            }
         }
-    }
 
-    if (failIntId && failStringId) {
-        param.DEVICE_ID.second = failmsg;
-        delete device;
-        return;
-    }
 
-    if (device->mNbDev<0 || cId>(device->mNbDev - 1)) {
-        param.DEVICE_ID.second = "- CAMERA_ID's value not exist.";
-        delete device;
-        return;
-    }
 
-    param.DEVICE_ID.first.first = cId;
-    param.DEVICE_ID.first.second = true;
-    param.DEVICE_ID.second = "";
+		if (device->mNbDev < 0 || cId > (device->mNbDev - 1)) {
+			cam.DEVICE_ID.second = "- CAMERA_ID's value not exist.";
+			delete device;
+			return;
+		}
+
+		cam.DEVICE_ID.first.first = cId;
+		cam.DEVICE_ID.first.second = true;
+		cam.DEVICE_ID.second = "";
+    }
 
     delete device;
 }
@@ -307,66 +221,25 @@ void CfgParam::loadLogParam()
     if (!e) param.log.status = true;
 }
 
-void CfgParam::loadFramesParam()
+void CfgParam::loadFramesParam(cameraParam& cam, const toml::value& table)
 {
-    bool e = false;
-    if (!cfg.Get("INPUT_TIME_INTERVAL", param.framesInput.INPUT_TIME_INTERVAL)) {
-        param.framesInput.errormsg.push_back("- INPUT_TIME_INTERVAL : Fail to get value.");
-        //cout << "- INPUT_FRAMES_DIRECTORY_PATH : Fail to get value." << endl;
-        e = true;
+    if (table.contains("INPUT_TIME_INTERVAL")) {
+        cam.acq.framesInput.INPUT_TIME_INTERVAL = toml::find<int>(table, "INPUT_TIME_INTERVAL");
     }
 
-    string inputPaths;
-    if (!cfg.Get("INPUT_FRAMES_DIRECTORY_PATH", inputPaths)) {
-        param.framesInput.errormsg.push_back("- INPUT_FRAMES_DIRECTORY_PATH : Fail to get value.");
-        //cout << "- INPUT_FRAMES_DIRECTORY_PATH : Fail to get value." << endl;
-        e = true;
+    if (table.contains("INPUT_FRAMES_DIRECTORY_PATH")) {
+        cam.acq.framesInput.INPUT_FRAMES_DIRECTORY_PATH = toml::find<std::vector<std::string>>(table, "INPUT_FRAMES_DIRECTORY_PATH");
     }
-
-    std::vector<std::string> tokens = TimeDate::split(inputPaths.c_str(), ',');
-    for (std::string tok : tokens) {
-        ghc::filesystem::path p_input_frames_dir(tok);
-        if (!ghc::filesystem::exists(p_input_frames_dir)) {
-            param.framesInput.errormsg.push_back("- INPUT_FRAMES_DIRECTORY_PATH : " + tok + " not exists.");
-            e = true;
-        } else {
-            param.framesInput.INPUT_FRAMES_DIRECTORY_PATH.push_back(tok);
-        }
-    }
-
-    if (!e) param.framesInput.status = true;
 }
 
-void CfgParam::loadVidParam()
+void CfgParam::loadVidParam(cameraParam& cam, const toml::value& table)
 {
-    bool e = false;
-    if (!cfg.Get("INPUT_TIME_INTERVAL", param.vidInput.INPUT_TIME_INTERVAL)) {
-        param.vidInput.errormsg.push_back("- INPUT_TIME_INTERVAL : Fail to get value.");
-        //cout << "- INPUT_FRAMES_DIRECTORY_PATH : Fail to get value." << endl;
-        e = true;
+    if (table.contains("INPUT_VIDEO_PATH")) {
+        cam.acq.vidInput.INPUT_VIDEO_PATH = toml::find<std::vector<std::string>>(table, "INPUT_VIDEO_PATH");
     }
-
-    string input_video_path;
-    if (!cfg.Get("INPUT_VIDEO_PATH", input_video_path)) {
-        param.vidInput.errormsg.push_back("- INPUT_VIDEO_PATH : Fail to get value.");
-        e = true;
-    }
-
-    std::vector<std::string> tokens = TimeDate::split(input_video_path.c_str(), ',');
-    for (std::string tok : tokens) {
-        ghc::filesystem::path p_input_video_path(tok);
-        if (!is_regular_file(p_input_video_path)) {
-            param.vidInput.errormsg.push_back("- INPUT_VIDEO_PATH : " + tok + " not exists.");
-            e = true;
-        } else {
-            param.vidInput.INPUT_VIDEO_PATH.push_back(tok);
-        }
-    }
-
-    if (!e) param.vidInput.status = true;
 }
 
-void CfgParam::loadCamParam()
+void CfgParam::loadCamParam(cameraParam& cam, const toml::value& table)
 {
     bool e = false;
     if (!param.DEVICE_ID.first.second) {

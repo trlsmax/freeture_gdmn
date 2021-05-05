@@ -52,6 +52,7 @@
 #include "EInputDeviceType.h"
 #include "opencv2/highgui/highgui.hpp"
 #include <opencv2/imgproc/imgproc.hpp>
+#include <toml.hpp>
 
 using namespace std;
 
@@ -66,8 +67,26 @@ struct mailParam{
     string          MAIL_SMTP_LOGIN;
     string          MAIL_SMTP_PASSWORD;
     vector<string>  MAIL_RECIPIENTS;
-    bool status;
-    vector<string> errormsg;
+
+    void from_toml(const toml::value& v) {
+        this->MAIL_DETECTION_ENABLED = toml::find_or<bool>(v, "MAIL_DETECTION_ENABLED", false);
+        this->MAIL_SMTP_SERVER = toml::find_or<std::string>(v, "MAIL_SMTP_SERVER", "");
+        this->MAIL_CONNECTION_TYPE = toml::find_or<SmtpSecurity>(v, "MAIL_CONNECTION_TYPE", SmtpSecurity::NO_SECURITY);
+        this->MAIL_SMTP_LOGIN = toml::find_or<std::string>(v, "MAIL_SMTP_LOGIN", "");
+        this->MAIL_SMTP_PASSWORD = toml::find_or<std::string>(v, "MAIL_SMTP_PASSWORD", "");
+        this->MAIL_RECIPIENTS = toml::find_or<std::vector<std::string>>(v, "MAIL_RECIPIENTS", std::vector<std::string>());
+    }
+
+    toml::value into_toml() const {
+        return toml::value{
+            {"MAIL_DETECTION_ENABLED", this->MAIL_DETECTION_ENABLED},
+            {"MAIL_SMTP_SERVER", this->MAIL_SMTP_SERVER},
+            {"MAIL_CONNECTION_TYPE", this->MAIL_CONNECTION_TYPE},
+            {"MAIL_SMTP_LOGIN", this->MAIL_SMTP_LOGIN},
+            {"MAIL_SMTP_PASSWORD", this->MAIL_SMTP_PASSWORD},
+            {"MAIL_RECIPIENTS", this->MAIL_RECIPIENTS}
+        };
+    }
 };
 
 // ******************************************************
@@ -79,8 +98,6 @@ struct logParam {
     int                 LOG_ARCHIVE_DAY;
     int                 LOG_SIZE_LIMIT;
     LogSeverityLevel    LOG_SEVERITY;
-    bool status;
-    vector<string> errormsg;
 };
 
 // ******************************************************
@@ -91,8 +108,6 @@ struct dataParam {
     string  DATA_PATH;
     bool    FITS_COMPRESSION;
     string  FITS_COMPRESSION_METHOD;
-    bool status;
-    vector<string> errormsg;
 };
 
 // ******************************************************
@@ -102,8 +117,22 @@ struct dataParam {
 struct framesParam {
     int INPUT_TIME_INTERVAL;
     vector<string> INPUT_FRAMES_DIRECTORY_PATH;
-    bool status;
-    vector<string> errormsg;
+
+    void from_toml(const toml::value& v) {
+        this->INPUT_FRAMES_DIRECTORY_PATH = toml::find_or<std::vector<std::string>>(v, "INPUT_FRAMES_DIRECTORY_PATH", std::vector<std::string>());
+        this->INPUT_TIME_INTERVAL = toml::find_or<int>(v, "INPUT_TIME_INTERVAL", 0);
+    }
+
+    toml::value into_toml() const {
+        return toml::value{
+            {"MAIL_DETECTION_ENABLED", this->MAIL_DETECTION_ENABLED},
+            {"MAIL_SMTP_SERVER", this->MAIL_SMTP_SERVER},
+            {"MAIL_CONNECTION_TYPE", this->MAIL_CONNECTION_TYPE},
+            {"MAIL_SMTP_LOGIN", this->MAIL_SMTP_LOGIN},
+            {"MAIL_SMTP_PASSWORD", this->MAIL_SMTP_PASSWORD},
+            {"MAIL_RECIPIENTS", this->MAIL_RECIPIENTS}
+        };
+    }
 };
 
 // ******************************************************
@@ -113,8 +142,6 @@ struct framesParam {
 struct videoParam {
     int INPUT_TIME_INTERVAL;
     vector<string> INPUT_VIDEO_PATH;
-    bool status;
-    vector<string> errormsg;
 };
 
 // ******************************************************
@@ -134,60 +161,45 @@ struct scheduleParam {
 // ******************************************************
 // ************** INPUT CAMERA PARAMETERS ***************
 // ******************************************************
+struct scheduledCaptures {
+	bool        ACQ_SCHEDULE_ENABLED;
+	ImgFormat   ACQ_SCHEDULE_OUTPUT;
+	vector<scheduleParam> ACQ_SCHEDULE;
+};
 
-struct cameraParam{
-    double      ACQ_FPS;
-    CamPixFmt   ACQ_FORMAT;
-    bool        ACQ_RES_CUSTOM_SIZE;
-    bool        SHIFT_BITS;
-    int         ACQ_NIGHT_EXPOSURE;
-    int         ACQ_NIGHT_GAIN;
-    int         ACQ_DAY_EXPOSURE;
-    int         ACQ_DAY_GAIN;
-    int         ACQ_STARTX;
-    int         ACQ_STARTY;
-    int         ACQ_HEIGHT;
-    int         ACQ_WIDTH;
-    int         EXPOSURE_CONTROL_FREQUENCY;
-    bool        EXPOSURE_CONTROL_SAVE_IMAGE;
-    bool        EXPOSURE_CONTROL_SAVE_INFOS;
+struct ephemeris {
+	bool    EPHEMERIS_ENABLED;
+	double  SUN_HORIZON_1;
+	double  SUN_HORIZON_2;
+	vector<int>  SUNRISE_TIME;
+	vector<int>  SUNSET_TIME;
+	int     SUNSET_DURATION;
+	int     SUNRISE_DURATION;
+};
 
-    struct ephemeris {
-        bool    EPHEMERIS_ENABLED;
-        double  SUN_HORIZON_1;
-        double  SUN_HORIZON_2;
-        vector<int>  SUNRISE_TIME;
-        vector<int>  SUNSET_TIME;
-        int     SUNSET_DURATION;
-        int     SUNRISE_DURATION;
-    };
-    ephemeris ephem;
+struct regularParam {
+	int interval;
+	int exp;
+	int gain;
+	int rep;
+	CamPixFmt fmt;
+};
 
-    struct regularCaptures {
-        bool        ACQ_REGULAR_ENABLED;
-        TimeMode    ACQ_REGULAR_MODE;
-        string      ACQ_REGULAR_PRFX;
-        ImgFormat   ACQ_REGULAR_OUTPUT;
-        struct regularParam {
-            int interval;
-            int exp;
-            int gain;
-            int rep;
-            CamPixFmt fmt;
-        };
-        regularParam ACQ_REGULAR_CFG;
-    };
-    regularCaptures regcap;
+struct regularCaptures {
+	bool        ACQ_REGULAR_ENABLED;
+	TimeMode    ACQ_REGULAR_MODE;
+	string      ACQ_REGULAR_PRFX;
+	ImgFormat   ACQ_REGULAR_OUTPUT;
+	regularParam ACQ_REGULAR_CFG;
+};
 
-    struct scheduledCaptures {
-        bool        ACQ_SCHEDULE_ENABLED;
-        ImgFormat   ACQ_SCHEDULE_OUTPUT;
-        vector<scheduleParam> ACQ_SCHEDULE;
-    };
-    scheduledCaptures schcap;
-
-    bool status;
-    vector<string> errormsg;
+struct detectionMethod1 {
+	bool    DET_SAVE_GEMAP;
+	bool    DET_SAVE_DIRMAP;
+	bool    DET_SAVE_POS;
+	int     DET_LE_MAX;
+	int     DET_GE_MAX;
+	//bool    DET_SAVE_GE_INFOS;
 };
 
 // ******************************************************
@@ -218,19 +230,31 @@ struct detectionParam {
     bool        DET_DEBUG_UPDATE_MASK;
     bool        DET_DOWNSAMPLE_ENABLED;
 
-    struct detectionMethod1 {
-        bool    DET_SAVE_GEMAP;
-        bool    DET_SAVE_DIRMAP;
-        bool    DET_SAVE_POS;
-        int     DET_LE_MAX;
-        int     DET_GE_MAX;
-        //bool    DET_SAVE_GE_INFOS;
-    };
     detectionMethod1 temporal;
 
-    bool status;
-    vector<string> errormsg;
+};
 
+struct acqParam {
+    double      ACQ_FPS;
+    CamPixFmt   ACQ_FORMAT;
+    bool        ACQ_RES_CUSTOM_SIZE;
+    bool        SHIFT_BITS;
+    int         ACQ_NIGHT_EXPOSURE;
+    int         ACQ_NIGHT_GAIN;
+    int         ACQ_DAY_EXPOSURE;
+    int         ACQ_DAY_GAIN;
+    int         ACQ_STARTX;
+    int         ACQ_STARTY;
+    int         ACQ_HEIGHT;
+    int         ACQ_WIDTH;
+    int         EXPOSURE_CONTROL_FREQUENCY;
+    bool        EXPOSURE_CONTROL_SAVE_IMAGE;
+    bool        EXPOSURE_CONTROL_SAVE_INFOS;
+    framesParam     framesInput;
+    videoParam      vidInput;
+    cameraParam     camInput;
+    regularCaptures regcap;
+    scheduledCaptures schcap;
 };
 
 // ******************************************************
@@ -244,28 +268,6 @@ struct stackParam{
     int         STACK_INTERVAL;
     StackMeth   STACK_MTHD;
     bool        STACK_REDUCTION;
-    bool status;
-    vector<string> errormsg;
-};
-
-// ******************************************************
-// ****************** STATION PARAMETERS ****************
-// ******************************************************
-
- struct stationParam {
-    string STATION_NAME;
-    string TELESCOP;
-    string OBSERVER;
-    string INSTRUME;
-    string CAMERA;
-    double FOCAL;
-    double APERTURE;
-    double SITELONG;
-    double SITELAT;
-    double SITEELEV;
-    string GPS_LOCK;
-    bool status;
-    vector<string> errormsg;
 };
 
 // ******************************************************
@@ -283,8 +285,35 @@ struct fitskeysParam{
     double CD2_2;
     double XPIXEL;
     double YPIXEL;
-    bool status;
-    vector<string> errormsg;
+};
+
+
+struct cameraParam{
+    pair<pair<int, bool>,string> DEVICE_ID; // Pair : <value, status>
+    ephemeris ephem;
+    acqParam acq;
+    detectionParam det;
+    stackParam stack;
+    fitskeysParam fits;
+};
+
+
+// ******************************************************
+// ****************** STATION PARAMETERS ****************
+// ******************************************************
+
+ struct stationParam {
+    string STATION_NAME;
+    string TELESCOP;
+    string OBSERVER;
+    string INSTRUME;
+    string CAMERA;
+    double FOCAL;
+    double APERTURE;
+    double SITELONG;
+    double SITELAT;
+    double SITEELEV;
+    string GPS_LOCK;
 };
 
 // ******************************************************
@@ -292,16 +321,10 @@ struct fitskeysParam{
 // ******************************************************
 
 struct parameters {
-    pair<pair<int, bool>,string> DEVICE_ID; // Pair : <value, status>
+    std::vector<cameraParam> cameras;
     dataParam       data;
     logParam        log;
-    framesParam     framesInput;
-    videoParam      vidInput;
-    cameraParam     camInput;
-    detectionParam  det;
-    stackParam      st;
     stationParam    station;
-    fitskeysParam   fitskeys;
     mailParam       mail;
 };
 
