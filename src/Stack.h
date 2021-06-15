@@ -36,15 +36,13 @@
 
 #include "config.h"
 
-#include "opencv2/highgui/highgui.hpp"
 #include <opencv2/imgproc/imgproc.hpp>
+#include <filesystem.hpp>
 #include "ELogSeverityLevel.h"
 #include "TimeDate.h"
-#include "Fits2D.h"
-#include "Fits.h"
 #include "Frame.h"
 #include "EStackMeth.h"
-#include <filesystem.hpp>
+#include "SParam.h"
 
 using namespace ghc::filesystem;
 using namespace std;

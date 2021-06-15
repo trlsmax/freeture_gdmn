@@ -37,13 +37,10 @@
 #include "config.h"
 
 #include <circular_buffer/circular_buffer.hpp>
-#include "opencv2/highgui/highgui.hpp"
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/video/tracking.hpp>
 #include "ELogSeverityLevel.h"
 #include "TimeDate.h"
-#include "Fits2D.h"
-#include "Fits.h"
 #include "Frame.h"
 #include "EStackMeth.h"
 #include "ECamPixFmt.h"

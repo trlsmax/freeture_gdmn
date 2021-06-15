@@ -50,10 +50,8 @@
 #include "EImgFormat.h"
 #include "Ephemeris.h"
 #include "ExposureControl.h"
-#include "Fits2D.h"
 #include "ImgProcessing.h"
 #include "SParam.h"
-#include "StackThread.h"
 #include "config.h"
 
 using namespace std;
@@ -74,8 +72,6 @@ private:
     int mNextAcqIndex;
     DetThread* pDetection; // Pointer on detection thread in order to stop it
         // or reset it when a regular capture occurs.
-    StackThread* pStack; // Pointer on stack thread in order to save and reset
-        // a stack when a regular capture occurs.
     ExposureControl* pExpCtrl; // Pointer on exposure time control object while
         // sunrise and sunset.
     string mOutputDataPath; // Dynamic location where to save data (regular
@@ -88,7 +84,6 @@ private:
     int mCurrentTime {}; // In seconds.
 
     // Parameters from configuration file.
-    stackParam msp;
     stationParam mstp;
     detectionParam mdtp;
     cameraParam mcp;
@@ -100,12 +95,7 @@ private:
     // Communication with the shared framebuffer.
     condition_variable* frameBuffer_condition;
     mutex* frameBuffer_mutex;
-    circular_buffer<Frame>* frameBuffer;
-
-    // Communication with DetThread.
-    bool* stackSignal;
-    mutex* stackSignal_mutex;
-    condition_variable* stackSignal_condition;
+    circular_buffer<std::shared_ptr<Frame>>* frameBuffer;
 
     // Communication with StackThread.
     bool* detSignal;
@@ -115,12 +105,10 @@ private:
     bool printFrameStats;
 
 public:
-    AcqThread(circular_buffer<Frame>* fb, mutex* fb_m,
-        condition_variable* fb_c, bool* sSignal, mutex* sSignal_m,
-        condition_variable* sSignal_c, bool* dSignal, mutex* dSignal_m,
+    AcqThread(circular_buffer<std::shared_ptr<Frame>>* fb, mutex* fb_m,
+        condition_variable* fb_c, bool* dSignal, mutex* dSignal_m,
         condition_variable* dSignal_c, DetThread* detection,
-        StackThread* stack, int cid, dataParam dp, stackParam sp,
-        stationParam stp, detectionParam dtp, cameraParam acq,
+        int cid, dataParam dp, stationParam stp, detectionParam dtp, cameraParam acq,
         framesParam fp, videoParam vp, fitskeysParam fkp);
 
     ~AcqThread(void);

@@ -15,9 +15,6 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\src\AcqSchedule.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
     <ClCompile Include="..\src\AcqThread.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
@@ -63,15 +60,6 @@
     <ClCompile Include="..\src\ExposureControl.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="..\src\Fits.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\Fits2D.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\Fits3D.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
     <ClCompile Include="..\src\Frame.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
@@ -106,9 +94,6 @@
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="..\src\Stack.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\StackThread.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="..\src\TimeDate.cpp">

@@ -37,20 +37,18 @@
 
 #include "config.h"
 
-#include "opencv2/highgui/highgui.hpp"
 #include <opencv2/imgproc/imgproc.hpp>
 #include "ELogSeverityLevel.h"
 #include <vector>
 #include <iterator>
 #include <algorithm>
 #include "TimeDate.h"
-#include "Fits2D.h"
-#include "Fits.h"
 #include "Frame.h"
 #include "EStackMeth.h"
 #include "ECamPixFmt.h"
 #include <filesystem.hpp>
 #include "SParam.h"
+#include "GlobalEvent.h"
 
 using namespace ghc::filesystem;
 using namespace std;
@@ -69,10 +67,8 @@ class Detection {
         * @param c Current frame.
         * @return Success to perform analysis.
         */
-        virtual bool runDetection(Frame &c) {
-
-            return false;
-
+        virtual std::shared_ptr<GlobalEvent> runDetection(std::shared_ptr<Frame> c) {
+            return nullptr;
         };
 
         /**
@@ -125,7 +121,7 @@ class Detection {
         * Save infos on the detected event.
         *
         */
-        virtual void saveDetectionInfos(string p, int nbFramesAround){};
+        virtual void saveDetectionInfos(GlobalEvent* ge, string path){};
 
         virtual vector<string> getDebugFiles() {vector<string> files; return files;};
 

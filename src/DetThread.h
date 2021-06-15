@@ -51,9 +51,6 @@
 #include "EDetMeth.h"
 #include "ESmtpSecurity.h"
 #include "EStackMeth.h"
-#include "Fits.h"
-#include "Fits2D.h"
-#include "Fits3D.h"
 #include "SParam.h"
 #include "Stack.h"
 #include "TimeDate.h"
@@ -73,7 +70,6 @@ private:
     mutex mMustStopMutex;
     string mStationName; // Name of the station              (parameter from configuration file).
     CamPixFmt mFormat; // Acquisition bit depth            (parameter from configuration file).
-    Fits mFitsHeader;
     bool mIsRunning; // Detection thread running status.
     bool mWaitFramesToCompleteEvent;
     int mNbWaitFrames;
@@ -83,7 +79,7 @@ private:
     int mNbDetection; // Number of detection.
     bool mInterruptionStatus;
     mutex mInterruptionStatusMutex;
-    circular_buffer<Frame>* frameBuffer;
+    circular_buffer<std::shared_ptr<Frame>>* frameBuffer;
     mutex* frameBuffer_mutex;
     condition_variable* frameBuffer_condition;
     bool* detSignal;
@@ -102,7 +98,7 @@ private:
     bool printFrameStats;
 
 public:
-    DetThread(circular_buffer<Frame>* fb,
+    DetThread(circular_buffer<std::shared_ptr<Frame>>* fb,
         mutex* fb_m,
         condition_variable* fb_c,
         bool* dSignal,
@@ -132,7 +128,7 @@ public:
         * @param lastEvPosInFB Last frame's number of the event.
         * @return Success to save an event.
         */
-    bool saveEventData(int firstEvPosInFB, int lastEvPosInFB);
+    bool saveEventData(GlobalEvent* ge);
 
     /**
         * Run status of detection thread.

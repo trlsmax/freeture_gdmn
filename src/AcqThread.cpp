@@ -41,20 +41,15 @@
 using namespace std::chrono;
 using namespace cv;
 
-AcqThread::AcqThread(circular_buffer<Frame>* fb,
+AcqThread::AcqThread(circular_buffer<std::shared_ptr<Frame>>* fb,
     mutex* fb_m,
     condition_variable* fb_c,
-    bool* sSignal,
-    mutex* sSignal_m,
-    condition_variable* sSignal_c,
     bool* dSignal,
     mutex* dSignal_m,
     condition_variable* dSignal_c,
     DetThread* detection,
-    StackThread* stack,
     int cid,
     dataParam dp,
-    stackParam sp,
     stationParam stp,
     detectionParam dtp,
     cameraParam acq,
@@ -65,14 +60,10 @@ AcqThread::AcqThread(circular_buffer<Frame>* fb,
     frameBuffer = fb;
     frameBuffer_mutex = fb_m;
     frameBuffer_condition = fb_c;
-    stackSignal = sSignal;
-    stackSignal_mutex = sSignal_m;
-    stackSignal_condition = sSignal_c;
     detSignal = dSignal;
     detSignal_mutex = dSignal_m;
     detSignal_condition = dSignal_c;
     pDetection = detection;
-    pStack = stack;
     mThread = NULL;
     mMustStop = false;
     mDevice = NULL;
@@ -81,7 +72,6 @@ AcqThread::AcqThread(circular_buffer<Frame>* fb,
     pExpCtrl = NULL;
     mDeviceID = cid;
     mdp = dp;
-    msp = sp;
     mstp = stp;
     mdtp = dtp;
     mcp = acq;
@@ -197,16 +187,16 @@ void AcqThread::run()
 
             do {
                 // Container for the grabbed image.
-                Frame newFrame;
+                std::shared_ptr<Frame> newFrame(std::make_shared<Frame>());
 
                 // Time counter of grabbing a frame.
                 auto tacq = (double)getTickCount();
 
                 // Grab a frame.
-                if (mDevice->runContinuousCapture(newFrame)) {
-                    logger->debug("============= FRAME {} =============", newFrame.mFrameNumber);
+                if (mDevice->runContinuousCapture(*newFrame)) {
+                    logger->debug("============= FRAME {} =============", newFrame->mFrameNumber);
                     if (printFrameStats) {
-                        spdlog::debug("============= FRAME {} =============", newFrame.mFrameNumber);
+                        spdlog::debug("============= FRAME {} =============", newFrame->mFrameNumber);
                     }
 
                     // If camera type in input is FRAMES or VIDEO.
@@ -218,8 +208,7 @@ void AcqThread::run()
 
                         // Notify detection thread.
                         if (pDetection != NULL) {
-                            std::unique_lock<std::mutex> lock2(
-                                *detSignal_mutex);
+                            std::unique_lock<std::mutex> lock2(*detSignal_mutex);
                             *detSignal = true;
                             detSignal_condition->notify_one();
                             lock2.unlock();
@@ -242,7 +231,7 @@ void AcqThread::run()
 
                     } else {
                         // Get current time in seconds.
-                        int currentTimeInSec = newFrame.mDate.hours * 3600 + newFrame.mDate.minutes * 60 + (int)newFrame.mDate.seconds;
+                        int currentTimeInSec = newFrame->mDate.hours * 3600 + newFrame->mDate.minutes * 60 + (int)newFrame->mDate.seconds;
 
                         // Detect day or night.
                         TimeMode currentTimeMode = NONE;
@@ -266,42 +255,15 @@ void AcqThread::run()
                             if (pDetection != nullptr) {
                                 if (previousTimeMode != currentTimeMode && mdtp.DET_MODE != DAYNIGHT) {
                                     logger->info("TimeMode has changed ! ");
-                                    std::unique_lock<std::mutex> lock2(
-                                        *detSignal_mutex);
+                                    std::unique_lock<std::mutex> lock2(*detSignal_mutex);
                                     *detSignal = false;
                                     lock2.unlock();
-                                    spdlog::info(
-                                        "Send interruption signal to detection "
-                                        "process ");
+                                    spdlog::info("Send interruption signal to detection process ");
                                     pDetection->interruptThread();
                                 } else if (mdtp.DET_MODE == currentTimeMode || mdtp.DET_MODE == DAYNIGHT) {
-                                    std::unique_lock<std::mutex> lock2(
-                                        *detSignal_mutex);
+                                    std::unique_lock<std::mutex> lock2(*detSignal_mutex);
                                     *detSignal = true;
                                     detSignal_condition->notify_one();
-                                    lock2.unlock();
-                                }
-                            }
-
-                            // Notify stack thread.
-                            if (pStack != nullptr) {
-                                // TimeMode has changed.
-                                if (previousTimeMode != currentTimeMode && msp.STACK_MODE != DAYNIGHT) {
-                                    logger->info("TimeMode has changed ! ");
-                                    std::unique_lock<std::mutex> lock2(
-                                        *stackSignal_mutex);
-                                    *stackSignal = false;
-                                    lock2.unlock();
-
-                                    // Force interruption.
-                                    spdlog::info(
-                                        "Send interruption signal to stack ");
-                                    pStack->interruptThread();
-                                } else if (msp.STACK_MODE == currentTimeMode || msp.STACK_MODE == DAYNIGHT) {
-                                    std::unique_lock<std::mutex> lock2(
-                                        *stackSignal_mutex);
-                                    *stackSignal = true;
-                                    stackSignal_condition->notify_one();
                                     lock2.unlock();
                                 }
                             }
@@ -310,35 +272,18 @@ void AcqThread::run()
                             // Exposure control is active, the new frame can't
                             // be shared with others threads.
                             if (!cleanStatus) {
-                                // If stack process exists.
-                                if (pStack != NULL) {
-                                    std::unique_lock<std::mutex> lock(
-                                        *stackSignal_mutex);
-                                    *stackSignal = false;
-                                    lock.unlock();
-
-                                    // Force interruption.
-                                    spdlog::info(
-                                        "Send interruption signal to stack ");
-                                    pStack->interruptThread();
-                                }
-
                                 // If detection process exists
                                 if (pDetection != NULL) {
-                                    std::unique_lock<std::mutex> lock(
-                                        *detSignal_mutex);
+                                    std::unique_lock<std::mutex> lock(*detSignal_mutex);
                                     *detSignal = false;
                                     lock.unlock();
-                                    spdlog::info(
-                                        "Sending interruption signal to "
-                                        "detection process... ");
+                                    spdlog::info("Sending interruption signal to detection process... ");
                                     pDetection->interruptThread();
                                 }
 
                                 // Reset framebuffer.
                                 spdlog::info("Cleaning frameBuffer...");
-                                std::unique_lock<std::mutex> lock(
-                                    *frameBuffer_mutex);
+                                std::unique_lock<std::mutex> lock(*frameBuffer_mutex);
                                 frameBuffer->clear();
                                 lock.unlock();
 
@@ -351,12 +296,12 @@ void AcqThread::run()
                         // Adjust exposure time.
                         if (pExpCtrl != NULL && exposureControlActive)
                             exposureControlStatus = pExpCtrl->controlExposureTime(
-                                mDevice, newFrame.mImg, newFrame.mDate,
+                                mDevice, newFrame->mImg, newFrame->mDate,
                                 mdtp.MASK, mDevice->mMinExposureTime,
                                 mcp.ACQ_FPS);
 
                         // Get current date YYYYMMDD.
-                        string currentFrameDate = TimeDate::getYYYYMMDD(newFrame.mDate);
+                        string currentFrameDate = TimeDate::getYYYYMMDD(newFrame->mDate);
 
                         // If the date has changed, sun ephemeris must be
                         // updated.
@@ -402,7 +347,7 @@ void AcqThread::run()
                                 } else if (currentTimeMode == DAY && (mcp.regcap.ACQ_REGULAR_MODE == DAY || mcp.regcap.ACQ_REGULAR_MODE == DAYNIGHT)) {
                                     logger->info("Run regular acquisition.");
                                     saveImageCaptured(
-                                        newFrame, 0,
+                                        *newFrame, 0,
                                         mcp.regcap.ACQ_REGULAR_OUTPUT,
                                         mcp.regcap.ACQ_REGULAR_PRFX);
                                 }
@@ -415,10 +360,10 @@ void AcqThread::run()
 
                         // Acquisiton at scheduled time is enabled.
                         if (!mcp.schcap.ACQ_SCHEDULE.empty() && mcp.schcap.ACQ_SCHEDULE_ENABLED && !mDevice->mVideoFramesInput) {
-                            int next = (mNextAcq.hours * 3600 + mNextAcq.min * 60 + mNextAcq.sec) - (newFrame.mDate.hours * 3600 + newFrame.mDate.minutes * 60 + newFrame.mDate.seconds);
+                            int next = (mNextAcq.hours * 3600 + mNextAcq.min * 60 + mNextAcq.sec) - (newFrame->mDate.hours * 3600 + newFrame->mDate.minutes * 60 + newFrame->mDate.seconds);
 
                             if (next < 0) {
-                                next = (24 * 3600) - (newFrame.mDate.hours * 3600 + newFrame.mDate.minutes * 60 + newFrame.mDate.seconds) + (mNextAcq.hours * 3600 + mNextAcq.min * 60 + mNextAcq.sec);
+                                next = (24 * 3600) - (newFrame->mDate.hours * 3600 + newFrame->mDate.minutes * 60 + newFrame->mDate.seconds) + (mNextAcq.hours * 3600 + mNextAcq.min * 60 + mNextAcq.sec);
                                 spdlog::info("next : {}", next);
                             }
 
@@ -431,7 +376,7 @@ void AcqThread::run()
                             }
 
                             // It's time to run scheduled acquisition.
-                            if (mNextAcq.hours == newFrame.mDate.hours && mNextAcq.min == newFrame.mDate.minutes && (int)newFrame.mDate.seconds == mNextAcq.sec) {
+                            if (mNextAcq.hours == newFrame->mDate.hours && mNextAcq.min == newFrame->mDate.minutes && (int)newFrame->mDate.seconds == mNextAcq.sec) {
                                 CamPixFmt format;
                                 format = mNextAcq.fmt;
 
@@ -440,23 +385,20 @@ void AcqThread::run()
                                     format, mcp.schcap.ACQ_SCHEDULE_OUTPUT, "");
 
                                 // Update mNextAcq
-                                selectNextAcquisitionSchedule(newFrame.mDate);
+                                selectNextAcquisitionSchedule(newFrame->mDate);
 
                             } else {
                                 // The current time has elapsed.
-                                if (newFrame.mDate.hours > mNextAcq.hours) {
-                                    selectNextAcquisitionSchedule(
-                                        newFrame.mDate);
+                                if (newFrame->mDate.hours > mNextAcq.hours) {
+                                    selectNextAcquisitionSchedule(newFrame->mDate);
 
-                                } else if (newFrame.mDate.hours == mNextAcq.hours) {
-                                    if (newFrame.mDate.minutes > mNextAcq.min) {
-                                        selectNextAcquisitionSchedule(
-                                            newFrame.mDate);
+                                } else if (newFrame->mDate.hours == mNextAcq.hours) {
+                                    if (newFrame->mDate.minutes > mNextAcq.min) {
+                                        selectNextAcquisitionSchedule(newFrame->mDate);
 
-                                    } else if (newFrame.mDate.minutes == mNextAcq.min) {
-                                        if (newFrame.mDate.seconds > mNextAcq.sec) {
-                                            selectNextAcquisitionSchedule(
-                                                newFrame.mDate);
+                                    } else if (newFrame->mDate.minutes == mNextAcq.min) {
+                                        if (newFrame->mDate.seconds > mNextAcq.sec) {
+                                            selectNextAcquisitionSchedule(newFrame->mDate);
                                         }
                                     }
                                 }
@@ -472,11 +414,9 @@ void AcqThread::run()
                             if (currentTimeInSec < mStartSunriseTime || currentTimeInSec > mStopSunsetTime) {
                                 vector<int> nextSunrise;
                                 if (currentTimeInSec < mStartSunriseTime)
-                                    nextSunrise = TimeDate::HdecimalToHMS(
-                                        (mStartSunriseTime - currentTimeInSec) / 3600.0);
+                                    nextSunrise = TimeDate::HdecimalToHMS((mStartSunriseTime - currentTimeInSec) / 3600.0);
                                 if (currentTimeInSec > mStopSunsetTime)
-                                    nextSunrise = TimeDate::HdecimalToHMS(
-                                        ((24 * 3600 - currentTimeInSec) + mStartSunriseTime) / 3600.0);
+                                    nextSunrise = TimeDate::HdecimalToHMS(((24 * 3600 - currentTimeInSec) + mStartSunriseTime) / 3600.0);
 
                                 if (printFrameStats) {
                                     spdlog::info(
@@ -489,8 +429,7 @@ void AcqThread::run()
                             // Print time before sunset.
                             if (currentTimeInSec > mStopSunriseTime && currentTimeInSec < mStartSunsetTime) {
                                 vector<int> nextSunset;
-                                nextSunset = TimeDate::HdecimalToHMS(
-                                    (mStartSunsetTime - currentTimeInSec) / 3600.0);
+                                nextSunset = TimeDate::HdecimalToHMS((mStartSunsetTime - currentTimeInSec) / 3600.0);
                                 if (printFrameStats) {
                                     spdlog::info(
                                         "\033[5;0H NEXT SUNSET : {}h {}m {}s",
@@ -716,17 +655,6 @@ void AcqThread::runImageCapture(int imgNumber,
     // Stop camera
     mDevice->stopCamera();
 
-    // Stop stack process.
-    if (pStack != NULL) {
-        std::unique_lock<std::mutex> lock(*stackSignal_mutex);
-        *stackSignal = false;
-        lock.unlock();
-
-        // Force interruption.
-        logger->info("Send reset signal to stack. ");
-        pStack->interruptThread();
-    }
-
     // Stop detection process.
     if (pDetection != nullptr) {
         std::unique_lock<std::mutex> lock(*detSignal_mutex);
@@ -828,77 +756,6 @@ void AcqThread::saveImageCaptured(Frame& img,
                         mOutputDataPath + fileName);
                 }
                 }
-            }
-
-            break;
-
-            case FITS: {
-                Fits2D newFits(mOutputDataPath, logger);
-                newFits.loadKeys(mfkp, mstp);
-                newFits.kGAINDB = img.mGain;
-                newFits.kEXPOSURE = img.mExposure / 1000000.0;
-                newFits.kONTIME = img.mExposure / 1000000.0;
-                newFits.kELAPTIME = img.mExposure / 1000000.0;
-                newFits.kDATEOBS = TimeDate::getIsoExtendedFormatDate(img.mDate);
-
-                double debObsInSeconds = img.mDate.hours * 3600 + img.mDate.minutes * 60 + img.mDate.seconds;
-                double julianDate = TimeDate::gregorianToJulian(img.mDate);
-                double julianCentury = TimeDate::julianCentury(julianDate);
-
-                newFits.kCRVAL1 = TimeDate::localSideralTime_2(
-                    julianCentury, img.mDate.hours, img.mDate.minutes,
-                    (int)img.mDate.seconds, mstp.SITELONG);
-                newFits.kCTYPE1 = "RA---ARC";
-                newFits.kCTYPE2 = "DEC--ARC";
-                newFits.kEQUINOX = 2000.0;
-
-                switch (img.mFormat) {
-                case MONO12: {
-                    // Convert unsigned short type image in short type
-                    // image.
-                    Mat newMat = Mat(img.mImg.rows, img.mImg.cols,
-                        CV_16SC1, Scalar(0));
-
-                    // Set bzero and bscale for print unsigned short
-                    // value in soft visualization.
-                    newFits.kBZERO = 32768;
-                    newFits.kBSCALE = 1;
-
-                    unsigned short* ptr = nullptr;
-                    short* ptr2 = nullptr;
-
-                    for (int i = 0; i < img.mImg.rows; i++) {
-                        ptr = img.mImg.ptr<unsigned short>(i);
-                        ptr2 = newMat.ptr<short>(i);
-
-                        for (int j = 0; j < img.mImg.cols; j++) {
-                            if (ptr[j] - 32768 > 32767) {
-                                ptr2[j] = 32767;
-                            } else {
-                                ptr2[j] = ptr[j] - 32768;
-                            }
-                        }
-                    }
-
-                    // Create FITS image with BITPIX = SHORT_IMG
-                    // (16-bits signed integers), pixel with TSHORT
-                    // (signed short)
-                    if (newFits.writeFits(newMat, S16, fileName, "",
-                            FITS_SUFFIX))
-                        spdlog::info(">> Fits saved in : {}{}",
-                            mOutputDataPath, fileName);
-                }
-
-                break;
-
-                default: {
-                    if (newFits.writeFits(img.mImg, UC8, fileName, "",
-                            FITS_SUFFIX))
-                        spdlog::info(">> Fits saved in : {}{}",
-                            mOutputDataPath, fileName);
-                }
-                }
-
             }
 
             break;

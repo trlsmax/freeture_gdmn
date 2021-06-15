@@ -33,6 +33,8 @@
 */
 
 #include "SaveImg.h"
+#include <opencv2/imgcodecs/legacy/constants_c.h>
+#include <opencv2/imgproc/types_c.h>
 using namespace cv;
 
 bool SaveImg::saveJPEG(Mat img, string name){

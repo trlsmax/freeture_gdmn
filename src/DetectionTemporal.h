@@ -50,8 +50,6 @@
 #include "ELogSeverityLevel.h"
 #include "EParser.h"
 #include "EStackMeth.h"
-#include "Fits.h"
-#include "Fits2D.h"
 #include "Frame.h"
 #include "GlobalEvent.h"
 #include "ImgProcessing.h"
@@ -60,7 +58,6 @@
 #include "SaveImg.h"
 #include "TimeDate.h"
 #include "config.h"
-#include "opencv2/highgui/highgui.hpp"
 
 using namespace ghc::filesystem;
 using namespace std;
@@ -68,14 +65,13 @@ using namespace cb;
 
 class DetectionTemporal : public Detection {
 private:
-    list<GlobalEvent> mListGlobalEvents;  // List of global events (Events
-                                            // spread on several frames).
+    list<std::shared_ptr<GlobalEvent>> mListGlobalEvents;  // List of global events (Events spread on several frames).
+    list<std::shared_ptr<GlobalEvent>>::iterator mGeToSave;  // Global event to save.
     vector<cv::Point> mSubdivisionPos;  // Position (origin in top left) of 64 subdivisions.
     vector<cv::Scalar> mListColors;  // One color per local event.
     cv::Mat mLocalMask;              // Mask used to remove isolated white pixels.
     bool mSubdivisionStatus;  // If subdivisions positions have been computed.
     cv::Mat mPrevThresholdedMap;
-    list<GlobalEvent>::iterator mGeToSave;  // Global event to save.
     int mRoiSize[2];
     int mImgNum;     // Current frame number.
     cv::Mat mPrevFrame;  // Previous frame.
@@ -97,19 +93,16 @@ public:
 
     void initMethod(string cfgPath);
 
-    bool runDetection(Frame &c);
+    std::shared_ptr<GlobalEvent> runDetection(std::shared_ptr<Frame> c);
 
-    void saveDetectionInfos(string p, int nbFramesAround);
+    void saveDetectionInfos(GlobalEvent* ge, string path);
 
     void resetDetection(bool loadNewDataSet);
 
     void resetMask();
 
-    int getEventFirstFrameNb() { return (*mGeToSave).getNumFirstFrame(); };
 
-    TimeDate::Date getEventDate() { return (*mGeToSave).getDate(); };
-
-    int getEventLastFrameNb() { return (*mGeToSave).getNumLastFrame(); };
+    TimeDate::Date getEventDate() { return (*mGeToSave)->getDate(); };
 
     vector<string> getDebugFiles();
 
@@ -124,7 +117,7 @@ private:
 
     void analyseRegion(cv::Mat &subdivision, cv::Mat &absDiffBinaryMap, cv::Mat &eventMap,
                        cv::Mat &posDiff, int posDiffThreshold, cv::Mat &negDiff,
-                       int negDiffThreshold, list<LocalEvent> &listLE,
+                       int negDiffThreshold, list<std::shared_ptr<LocalEvent>> &listLE,
                        cv::Point subdivisionPos, int maxNbLE, int numFrame,
                        string &msg, TimeDate::Date cFrameDate);
 };

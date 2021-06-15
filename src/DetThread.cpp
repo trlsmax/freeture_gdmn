@@ -38,7 +38,7 @@
 #include <spdlog/spdlog.h>
 using namespace cv;
 
-DetThread::DetThread(circular_buffer<Frame>* fb, mutex* fb_m,
+DetThread::DetThread(circular_buffer<std::shared_ptr<Frame>>* fb, mutex* fb_m,
 	condition_variable* fb_c, bool* dSignal,
 	mutex* dSignal_m,
 	condition_variable* dSignal_c, detectionParam dtp,
@@ -74,7 +74,6 @@ DetThread::DetThread(circular_buffer<Frame>* fb, mutex* fb_m,
 
 	printFrameStats = false;
 
-	mFitsHeader.loadKeys(fkp, sp);
 	switch (dtp.DET_METHOD) {
 	case TEMPORAL_MTHD: {
 		pDetMthd = new DetectionTemporal(dtp, pfmt);
@@ -141,8 +140,9 @@ void DetThread::run()
 	auto logger = spdlog::get("det_logger");
 	bool stopThread = false;
 	mIsRunning = true;
-	// Flag to indicate that an event must be complete with more frames.
 	bool eventToComplete = false;
+	std::list<std::pair<std::shared_ptr<GlobalEvent>, time_point<system_clock, std::chrono::seconds>>> listGlobalEvent;
+	// Flag to indicate that an event must be complete with more frames.
 	// Reference date to count time to complete an event.
 	time_point<system_clock, std::chrono::seconds> refTimeSec = time_point_cast<std::chrono::seconds>(system_clock::now());
 
@@ -173,68 +173,60 @@ void DetThread::run()
 
 				if (!mForceToReset) {
 					// Fetch the last grabbed frame.
-					Frame lastFrame;
+					std::shared_ptr<Frame> lastFrame;
 					std::unique_lock<std::mutex> lock2(*frameBuffer_mutex);
 					if (frameBuffer->size() > 2)
 						lastFrame = frameBuffer->back();
 					lock2.unlock();
 
 					double t = (double)getTickCount();
-					if (lastFrame.mImg.data) {
-						mFormat = lastFrame.mFormat;
+					if (lastFrame && lastFrame->mImg.data) {
+						mFormat = lastFrame->mFormat;
 						// Run detection process.
-						if (pDetMthd->runDetection(lastFrame) && !eventToComplete) {
-							// Event detected.
-							logger->info(
-								"Event detected ! Waiting frames to complete "
-								"the event...");
-							eventToComplete = true;
-
-							// Get a reference date.
-							refTimeSec = time_point_cast<std::chrono::seconds>(system_clock::now());
-
+						std::shared_ptr<GlobalEvent> ret = pDetMthd->runDetection(lastFrame);
+						if (ret) {
+							listGlobalEvent.emplace_back(ret, time_point_cast<std::chrono::seconds>(system_clock::now()));
+							logger->info( "Event detected ! Waiting frames to complete the event...");
 							mNbDetection++;
 						}
 
-						// Wait frames to complete the detection.
-						if (eventToComplete) {
+						if (!listGlobalEvent.empty()) {
 							time_point<system_clock, std::chrono::seconds> nowTimeSec = time_point_cast<std::chrono::seconds>(system_clock::now());
+							for (auto itr = listGlobalEvent.begin(); itr != listGlobalEvent.end();) {
+								itr->first->AddFrame(lastFrame, false);
+								auto d = nowTimeSec - itr->second;
+								long secTime = d.count();
+								if (secTime > mdtp.DET_TIME_AROUND) {
+									logger->info("Event completed.");
+									// Build event directory.
+									mEventDate = itr->first->getDate();
 
-							auto d = nowTimeSec - refTimeSec;
-							long secTime = d.count();
-							if (secTime > mdtp.DET_TIME_AROUND) {
-								logger->info("Event completed.");
-								// Build event directory.
-								mEventDate = pDetMthd->getEventDate();
-								logger->info("Building event directory...");
+									if (buildEventDataDirectory())
+										logger->info("Success to build event directory.");
+									else
+										logger->error("Fail to build event directory.");
 
-								if (buildEventDataDirectory())
-									logger->info("Success to build event directory.");
-								else
-									logger->error("Fail to build event directory.");
+									// Save event.
+									logger->info("Saving event...");
+									string eventBase = mstp.TELESCOP + "_" + TimeDate::getYYYY_MM_DD_hhmmss(mEventDate);
+									std::unique_lock<std::mutex> lock3(*frameBuffer_mutex);
+									itr->first->GetFramesBeforeEvent(frameBuffer);
+									lock3.unlock();
+									pDetMthd->saveDetectionInfos(itr->first.get(), mEventPath + eventBase);
+									if (!saveEventData(itr->first.get()))
+										logger->critical("Error saving event data.");
+									else
+										logger->info("Success to save event !");
+									itr = listGlobalEvent.erase(itr);
 
-								// Save event.
-								logger->info("Saving event...");
-								string eventBase = mstp.TELESCOP + "_detection_" + TimeDate::getYYYY_MM_DD_hhmmss(mEventDate);
-								pDetMthd->saveDetectionInfos(mEventPath + eventBase, mNbFramesAround);
-								std::unique_lock<std::mutex> lock(*frameBuffer_mutex);
-								if (!saveEventData(
-									pDetMthd->getEventFirstFrameNb(),
-									pDetMthd->getEventLastFrameNb()))
-									logger->critical("Error saving event data.");
-								else
-									logger->info("Success to save event !");
-
-								lock.unlock();
-
-								// Reset detection.
-								logger->info("Reset detection process.");
-								pDetMthd->resetDetection(false);
-								eventToComplete = false;
-								mNbFramesAround = 0;
+									// Reset detection.
+									logger->info("Reset detection process.");
+									pDetMthd->resetDetection(false);
+								}
+								else {
+									itr++;
+								}
 							}
-
-							mNbFramesAround++;
 						}
 					}
 
@@ -260,6 +252,7 @@ void DetThread::run()
 				}
 			}
 			catch (std::exception& e) {
+				listGlobalEvent.clear();
 				logger->critical(e.what());
 			}
 
@@ -297,15 +290,18 @@ void DetThread::run()
 		}
 	}
 	catch (const char* msg) {
+		listGlobalEvent.clear();
 		spdlog::critical(msg);
 		logger->critical(msg);
 	}
 	catch (exception& e) {
+		listGlobalEvent.clear();
 		spdlog::critical("An error occured. See log for details.");
 		spdlog::critical(e.what());
 		logger->critical(e.what());
 	}
 
+	listGlobalEvent.clear();
 	mIsRunning = false;
 	logger->info("DetThread ended.");
 }
@@ -450,7 +446,7 @@ bool DetThread::buildEventDataDirectory()
 	return true;
 }
 
-bool DetThread::saveEventData(int firstEvPosInFB, int lastEvPosInFB)
+bool DetThread::saveEventData(GlobalEvent* ge)
 {
 	namespace fs = ghc::filesystem;
 	auto logger = spdlog::get("det_logger");
@@ -460,29 +456,8 @@ bool DetThread::saveEventData(int firstEvPosInFB, int lastEvPosInFB)
 
 	string eventBase = mstp.TELESCOP + "_" + TimeDate::getYYYY_MM_DD_hhmmss(mEventDate);
 
-	// Number of the first frame to save. It depends of how many frames we want
-	// to keep before the event.
-	int numFirstFrameToSave = firstEvPosInFB - mNbFramesAround;
-
-	// Number of the last frame to save. It depends of how many frames we want
-	// to keep after the event.
-	int numLastFrameToSave = lastEvPosInFB + mNbFramesAround;
-
-	// If the number of the first frame to save for the event is not in the
-	// framebuffer. The first frame to save become the first frame available in
-	// the framebuffer.
-	if (frameBuffer->front().mFrameNumber > numFirstFrameToSave)
-		numFirstFrameToSave = frameBuffer->front().mFrameNumber;
-
-	// Check the number of the last frame to save.
-	if (frameBuffer->back().mFrameNumber < numLastFrameToSave)
-		numLastFrameToSave = frameBuffer->back().mFrameNumber;
-
-	// Total frames to save.
-	int nbTotalFramesToSave = numLastFrameToSave - numFirstFrameToSave;
-
 	// Count number of digit on nbTotalFramesToSave.
-	int n = nbTotalFramesToSave;
+	int n = ge->Frames().size();
 	int nbDigitOnNbTotalFramesToSave = 0;
 
 	while (n != 0) {
@@ -490,18 +465,14 @@ bool DetThread::saveEventData(int firstEvPosInFB, int lastEvPosInFB)
 		++nbDigitOnNbTotalFramesToSave;
 	}
 
-	logger->info("> First frame to save  : {}", numFirstFrameToSave);
-	logger->info("> Lst frame to save    : {}", numLastFrameToSave);
-	logger->info("> First event frame    : {}", firstEvPosInFB);
-	logger->info("> Last event frame     : {}", lastEvPosInFB);
-	logger->info("> Frames before        : {}", mNbFramesAround);
-	logger->info("> Frames after         : {}", mNbFramesAround);
-	logger->info("> Total frames to save : {}", nbTotalFramesToSave);
+	logger->info("> First frame to save  : {}", ge->Frames().front()->mFrameNumber);
+	logger->info("> Lst frame to save    : {}", ge->Frames().back()->mFrameNumber);
+	logger->info("> First event frame    : {}", ge->FirstEventFrameNbr());
+	logger->info("> Last event frame     : {}", ge->LastEventFrameNbr());
+	logger->info("> Frames before        : {}", ge->FramesAround());
+	logger->info("> Frames after         : {}", ge->FramesAround());
+	logger->info("> Total frames to save : {}", ge->Frames().size());
 	logger->info("> Total digit          : {}", nbDigitOnNbTotalFramesToSave);
-
-	TimeDate::Date dateFirstFrame;
-
-	int c = 0;
 
 	// Init video avi
 	VideoWriter* video = NULL;
@@ -512,156 +483,31 @@ bool DetThread::saveEventData(int firstEvPosInFB, int lastEvPosInFB)
 		video = new VideoWriter(
 			mEventPath + eventBase + "_video.avi",
 			VideoWriter::fourcc('M', 'J', 'P', 'G'), 30,
-			Size(static_cast<int>(frameBuffer->front().mImg.cols),
-				static_cast<int>(frameBuffer->front().mImg.rows)),
+			Size(static_cast<int>(ge->Frames().front()->mImg.cols),
+				static_cast<int>(ge->Frames().front()->mImg.rows)),
 			false);
-	}
-
-	// Init fits 3D.
-	Fits3D fits3d(logger);
-
-	if (mdtp.DET_SAVE_FITS3D) {
-		fits3d = Fits3D(mFormat, frameBuffer->front().mImg.rows,
-			frameBuffer->front().mImg.cols,
-			(numLastFrameToSave - numFirstFrameToSave + 1),
-			mEventPath + "fits3D");
-		fits3d.kDATE = TimeDate::IsoExtendedStringNow();
-
-		// Name of the fits file.
-		fits3d.kFILENAME = mEventPath + eventBase + "_fitscube.fit";
 	}
 
 	// Init sum.
 	Stack stack = Stack(mdp.FITS_COMPRESSION_METHOD, mfkp, mstp);
 
-	// Exposure time sum.
-	double sumExpTime = 0.0;
-	double firstExpTime = 0.0;
-	bool varExpTime = false;
-
 	// Loop framebuffer.
 	circular_buffer<Frame>::iterator it;
-	for (it = frameBuffer->begin(); it != frameBuffer->end(); ++it) {
-		// Get infos about the first frame of the event for fits 3D.
-		if ((*it).mFrameNumber == numFirstFrameToSave && mdtp.DET_SAVE_FITS3D) {
-			fits3d.kDATEOBS = TimeDate::getIsoExtendedFormatDate((*it).mDate);
-			// Gain.
-			fits3d.kGAINDB = (*it).mGain;
-			// Saturation.
-			fits3d.kSATURATE = (*it).mSaturatedValue;
-			// FPS.
-			fits3d.kCD3_3 = (*it).mFps;
-			// CRVAL1 : sideral time.
-			double julianDate = TimeDate::gregorianToJulian((*it).mDate);
-			double julianCentury = TimeDate::julianCentury(julianDate);
-			double sideralT = TimeDate::localSideralTime_2(
-				julianCentury, (*it).mDate.hours, (*it).mDate.minutes,
-				(int)(*it).mDate.seconds, mFitsHeader.kSITELONG);
-			fits3d.kCRVAL1 = sideralT;
-			// Projection and reference system
-			fits3d.kCTYPE1 = "RA---ARC";
-			fits3d.kCTYPE2 = "DEC--ARC";
-			// Equinox
-			fits3d.kEQUINOX = 2000.0;
-			firstExpTime = (*it).mExposure;
-			dateFirstFrame = (*it).mDate;
+	for (auto& frame : ge->Frames()) {
+		if (mdtp.DET_SAVE_AVI) {
+			if (video->isOpened()) {
+				if (it->mImg.type() != CV_8UC1) {
+					Mat iv = Conversion::convertTo8UC1(frame->mImg);
+					video->write(iv);
+				}
+				else {
+					video->write(frame->mImg);
+				}
+			}
 		}
 
-		// Get infos about the last frame of the event record for fits 3D.
-		if ((*it).mFrameNumber == numLastFrameToSave && mdtp.DET_SAVE_FITS3D) {
-			spdlog::info("DATE first : {} H {} M {} S", dateFirstFrame.hours,
-				dateFirstFrame.minutes, dateFirstFrame.seconds);
-			spdlog::info("DATE last  : {} H {} M {} S", (*it).mDate.hours,
-				(*it).mDate.minutes, (*it).mDate.seconds);
-			fits3d.kELAPTIME = ((*it).mDate.hours * 3600 + (*it).mDate.minutes * 60 + (*it).mDate.seconds) - (dateFirstFrame.hours * 3600 + dateFirstFrame.minutes * 60 + dateFirstFrame.seconds);
-		}
-
-		// If the current frame read from the framebuffer has to be saved.
-		if ((*it).mFrameNumber >= numFirstFrameToSave && (*it).mFrameNumber < numLastFrameToSave) {
-			// Save fits2D.
-			if (mdtp.DET_SAVE_FITS2D) {
-				string fits2DPath = mEventPath + eventBase + "_rawframes/";
-				string fits2DName = "frame_" + Conversion::numbering(nbDigitOnNbTotalFramesToSave, c) + Conversion::intToString(c);
-				logger->info(">> Saving fits2D : {}", fits2DName);
-
-				Fits2D newFits(fits2DPath, logger);
-				newFits.loadKeys(mfkp, mstp);
-				// Frame's acquisition date.
-				newFits.kDATEOBS = TimeDate::getIsoExtendedFormatDate((*it).mDate);
-				// Fits file creation date.
-				// YYYYMMDDTHHMMSS,fffffffff where T is the date-time separator
-				newFits.kDATE = TimeDate::IsoExtendedStringNow();
-				// Name of the fits file.
-				newFits.kFILENAME = fits2DName;
-				// Exposure time.
-				newFits.kONTIME = (*it).mExposure / 1000000.0;
-				// Gain.
-				newFits.kGAINDB = (*it).mGain;
-				// Saturation.
-				newFits.kSATURATE = (*it).mSaturatedValue;
-				// FPS.
-				newFits.kCD3_3 = (*it).mFps;
-				// CRVAL1 : sideral time.
-				double julianDate = TimeDate::gregorianToJulian((*it).mDate);
-				double julianCentury = TimeDate::julianCentury(julianDate);
-				double sideralT = TimeDate::localSideralTime_2(
-					julianCentury, (*it).mDate.hours, (*it).mDate.minutes,
-					(*it).mDate.seconds, mFitsHeader.kSITELONG);
-				newFits.kCRVAL1 = sideralT;
-				newFits.kEXPOSURE = (*it).mExposure / 1000000.0;
-				// Projection and reference system
-				newFits.kCTYPE1 = "RA---ARC";
-				newFits.kCTYPE2 = "DEC--ARC";
-				// Equinox
-				newFits.kEQUINOX = 2000.0;
-
-				if (!fs::exists(fs::path(fits2DPath))) {
-					if (fs::create_directories(fs::path(fits2DPath)))
-						logger->info("Success to create directory : {}", fits2DPath);
-				}
-
-				switch (mFormat) {
-				case MONO12: {
-					newFits.writeFits((*it).mImg, S16, fits2DName,
-						mdp.FITS_COMPRESSION_METHOD, "");
-				} break;
-				default:
-
-				{
-					newFits.writeFits((*it).mImg, UC8, fits2DName,
-						mdp.FITS_COMPRESSION_METHOD, "");
-				}
-				}
-			}
-
-			if (mdtp.DET_SAVE_AVI) {
-				if (video->isOpened()) {
-					if (it->mImg.type() != CV_8UC1) {
-						Mat iv = Conversion::convertTo8UC1((*it).mImg);
-						video->write(iv);
-					}
-					else {
-						video->write(it->mImg);
-					}
-				}
-			}
-
-			// Add a frame to fits cube.
-			if (mdtp.DET_SAVE_FITS3D) {
-				if (firstExpTime != (*it).mExposure)
-					varExpTime = true;
-
-				sumExpTime += (*it).mExposure;
-				fits3d.addImageToFits3D((*it).mImg);
-			}
-
-			// Add frame to the event's stack.
-			if (mdtp.DET_SAVE_SUM && (*it).mFrameNumber >= firstEvPosInFB && (*it).mFrameNumber <= lastEvPosInFB) {
-				stack.addFrame((*it));
-			}
-
-			c++;
-		}
+		// Add frame to the event's stack.
+		stack.addFrame(*frame);
 	}
 
 	if (mdtp.DET_SAVE_AVI) {
@@ -669,85 +515,10 @@ bool DetThread::saveEventData(int firstEvPosInFB, int lastEvPosInFB)
 			delete video;
 	}
 
-	// ********************************* SAVE EVENT IN FITS CUBE
-	// ***********************************
-
-	if (mdtp.DET_SAVE_FITS3D) {
-		// Exposure time of a single frame.
-		if (varExpTime)
-			fits3d.kEXPOSURE = 999999;
-		else {
-			it = frameBuffer->begin();
-			fits3d.kEXPOSURE = (*it).mExposure / 1000000.0;
-		}
-
-		// Exposure time sum of frames in the fits cube.
-		fits3d.kONTIME = sumExpTime / 1000000.0;
-		fits3d.writeFits3D();
-	}
-
-	// ********************************* SAVE EVENT STACK IN FITS
-	// **********************************
-	//if (mdtp.DET_SAVE_SUM) {
-	//    stack.saveStack(mEventPath, mdtp.DET_SUM_MTHD, mdtp.DET_SUM_REDUCTION);
-	//}
-
-	// ************************** EVENT STACK WITH HISTOGRAM EQUALIZATION
-	// ***************************
-
+	// EVENT STACK WITH HISTOGRAM EQUALIZATION
 	if (mdtp.DET_SAVE_SUM_WITH_HIST_EQUALIZATION) {
-#if 0
-		Mat s, s1, eqHist;
-		float bzero = 0.0;
-		float bscale = 1.0;
-		s = stack.reductionByFactorDivision(bzero, bscale);
-		cout << "mFormat : " << mFormat << endl;
-		if (mFormat != MONO8)
-			Conversion::convertTo8UC1(s).copyTo(s);
-
-		equalizeHist(s, eqHist);
-		// SaveImg::saveJPEG(eqHist,mEventPath+mStationName+"_"+TimeDate::getYYYYMMDDThhmmss(mEventDate)+"_UT");
-		SaveImg::saveJPEG(eqHist, mEventPath + eventBase);
-#endif
 		SaveImg::saveJPEG(stack.getStack(), mEventPath + eventBase);
 	}
-
-#if 0
-	// *********************************** SEND MAIL NOTIFICATION ***********************************
-	BOOST_LOG_SEV(logger, notification) << "Prepare mail..." << mmp.MAIL_DETECTION_ENABLED;
-	if (mmp.MAIL_DETECTION_ENABLED) {
-
-		BOOST_LOG_SEV(logger, notification) << "Sending mail...";
-
-		for (int i = 0; i < pDetMthd->getDebugFiles().size(); i++) {
-
-			if (boost::filesystem::exists(mEventPath + pDetMthd->getDebugFiles().at(i))) {
-
-				BOOST_LOG_SEV(logger, notification) << "Send : " << mEventPath << pDetMthd->getDebugFiles().at(i);
-				mailAttachments.push_back(mEventPath + pDetMthd->getDebugFiles().at(i));
-
-			}
-		}
-
-		if (mdtp.DET_SAVE_SUM_WITH_HIST_EQUALIZATION && boost::filesystem::exists(mEventPath + mStationName + "_" + TimeDate::getYYYYMMDDThhmmss(mEventDate) + "_UT.jpg")) {
-
-			BOOST_LOG_SEV(logger, notification) << "Send : " << mEventPath << mStationName << "_" << TimeDate::getYYYYMMDDThhmmss(mEventDate) << "_UT.jpg";
-			mailAttachments.push_back(mEventPath + mStationName + "_" + TimeDate::getYYYYMMDDThhmmss(mEventDate) + "_UT.jpg");
-
-		}
-
-		SMTPClient::sendMail(mmp.MAIL_SMTP_SERVER,
-			mmp.MAIL_SMTP_LOGIN,
-			mmp.MAIL_SMTP_PASSWORD,
-			"freeture@" + mStationName + ".fr",
-			mmp.MAIL_RECIPIENTS,
-			mStationName + "-" + TimeDate::getYYYYMMDDThhmmss(mEventDate),
-			mStationName + "\n" + mEventPath,
-			mailAttachments,
-			mmp.MAIL_CONNECTION_TYPE);
-
-}
-#endif
 
 	return true;
 }

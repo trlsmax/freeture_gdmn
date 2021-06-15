@@ -363,6 +363,7 @@ void Device::listDevices(bool printInfos)
     delete mCam;
 #endif
 
+#ifdef LINUX
     // V4L2
     createDevicesWith(V4L2);
     listCams = mCam->getCamerasList();
@@ -376,6 +377,7 @@ void Device::listDevices(bool printInfos)
         mNbDev++;
     }
     delete mCam;
+#endif
 #endif
     // VIDEO
     elem.first = mNbDev;

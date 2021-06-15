@@ -230,29 +230,9 @@ bool CameraFrames::grabImage(Frame& img)
 
     } else {
         logger->info("Frame found.");
-        Fits2D newFits(filename, logger);
-        int bitpix;
-
-        if (!newFits.readIntKeyword("BITPIX", bitpix)) {
-            logger->error(" Fail to read fits keyword : BITPIX");
-            return false;
-        }
-
-        /// Read the frame.
 
         Mat resMat;
         CamPixFmt frameFormat = MONO8;
-
-        switch (bitpix) {
-        case 8:
-            frameFormat = MONO8;
-            newFits.readFits8UC(resMat);
-            break;
-        case 16:
-            frameFormat = MONO12;
-            newFits.readFits16S(resMat);
-            break;
-        }
 
         Frame f = Frame(resMat, 0, 0);
 

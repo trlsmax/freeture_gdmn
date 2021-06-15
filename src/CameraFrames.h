@@ -41,13 +41,10 @@
 #include <list>
 
 #include <filesystem.hpp>
-#include <opencv2/highgui/highgui.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 
 #include "Conversion.h"
 #include "ELogSeverityLevel.h"
-#include "Fits.h"
-#include "Fits2D.h"
 #include "Frame.h"
 #include "TimeDate.h"
 

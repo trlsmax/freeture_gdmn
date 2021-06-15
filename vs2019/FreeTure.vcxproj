@@ -78,14 +78,14 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>$(Projectdir)..\libs\VI\include;$(ProjectDir)..\libs\opencv\include;$(ProjectDir)..\libs;$(ProjectDir)..\libs\cfitsio\include;$(ProjectDir)..\src;$(IncludePath)</IncludePath>
-    <LibraryPath>$(ProjectDir)..\libs\VI\lib64;$(ProjectDir)..\libs\opencv\x64\vc16\lib;$(ProjectDir)..\libs\cfitsio\x64;$(LibraryPath)</LibraryPath>
+    <IncludePath>$(Projectdir)..\libs\VI\include;$(ProjectDir)..\libs\opencv\include;$(ProjectDir)..\libs;$(ProjectDir)..\src;$(IncludePath)</IncludePath>
+    <LibraryPath>$(ProjectDir)..\libs\VI\lib64;$(ProjectDir)..\libs\opencv\x64\vc16\lib;$(LibraryPath)</LibraryPath>
     <IntDir>$(Platform)\$(Configuration)\d</IntDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
-    <IncludePath>$(Projectdir)..\libs\VI\include;$(ProjectDir)..\libs\opencv\include;$(ProjectDir)..\libs;$(ProjectDir)..\libs\cfitsio\include;$(ProjectDir)..\src;$(VC_IncludePath);$(WindowsSDK_IncludePath);</IncludePath>
-    <LibraryPath>$(ProjectDir)..\libs\VI\lib64;$(ProjectDir)..\libs\opencv\x64\vc16\lib;$(ProjectDir)..\libs\cfitsio\x64;$(VC_LibraryPath_x64);$(WindowsSDK_LibraryPath_x64)</LibraryPath>
+    <IncludePath>$(Projectdir)..\libs\VI\include;$(ProjectDir)..\libs\opencv\include;$(ProjectDir)..\libs;$(ProjectDir)..\src;$(VC_IncludePath);$(WindowsSDK_IncludePath)</IncludePath>
+    <LibraryPath>$(ProjectDir)..\libs\VI\lib64;$(ProjectDir)..\libs\opencv\x64\vc16\lib;$(VC_LibraryPath_x64);$(WindowsSDK_LibraryPath_x64)</LibraryPath>
     <IntDir>$(Platform)\$(Configuration)\d</IntDir>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
@@ -127,7 +127,7 @@
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>videoInputD.lib;cfitsio.lib;opencv_core450d.lib;opencv_highgui450d.lib;opencv_imgcodecs450d.lib;opencv_imgproc450d.lib;opencv_video450d.lib;opencv_videoio450d.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>videoInputD.lib;opencv_core450d.lib;opencv_imgcodecs450d.lib;opencv_imgproc450d.lib;opencv_video450d.lib;opencv_videoio450d.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -146,12 +146,11 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>videoInput.lib;cfitsio.lib;opencv_core450.lib;opencv_highgui450.lib;opencv_imgcodecs450.lib;opencv_imgproc450.lib;opencv_video450.lib;opencv_videoio450.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>videoInput.lib;opencv_core450.lib;opencv_imgcodecs450.lib;opencv_imgproc450.lib;opencv_video450.lib;opencv_videoio450.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="..\libs\date\tz.cpp" />
-    <ClCompile Include="..\src\AcqSchedule.cpp" />
     <ClCompile Include="..\src\AcqThread.cpp" />
     <ClCompile Include="..\src\CameraFrames.cpp" />
     <ClCompile Include="..\src\CameraVideo.cpp" />
@@ -167,9 +166,6 @@
     <ClCompile Include="..\src\EParser.cpp" />
     <ClCompile Include="..\src\Ephemeris.cpp" />
     <ClCompile Include="..\src\ExposureControl.cpp" />
-    <ClCompile Include="..\src\Fits.cpp" />
-    <ClCompile Include="..\src\Fits2D.cpp" />
-    <ClCompile Include="..\src\Fits3D.cpp" />
     <ClCompile Include="..\src\Frame.cpp" />
     <ClCompile Include="..\src\GlobalEvent.cpp" />
     <ClCompile Include="..\src\Histogram.cpp" />
@@ -182,7 +178,6 @@
     <ClCompile Include="..\src\PixFmtConv.cpp" />
     <ClCompile Include="..\src\SaveImg.cpp" />
     <ClCompile Include="..\src\Stack.cpp" />
-    <ClCompile Include="..\src\StackThread.cpp" />
     <ClCompile Include="..\src\TimeDate.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

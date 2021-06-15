@@ -73,12 +73,9 @@
 #include "EImgBitDepth.h"
 #include "EParser.h"
 #include "Ephemeris.h"
-#include "Fits2D.h"
 #include "Frame.h"
 #include "ImgProcessing.h"
 #include "SaveImg.h"
-#include "StackThread.h"
-#include "opencv2/highgui/highgui.hpp"
 
 #define BOOST_NO_SCOPED_ENUMS
 using namespace std;
@@ -160,10 +157,8 @@ int main(int argc, const char** argv)
         ("c,cfg", "Configuration file's path.", cxxopts::value<std::string>()->default_value(string(CFG_PATH) + "configuration.cfg"))
         ("f,format", "Index of pixel format.", cxxopts::value<int>()->default_value("0"))
         ("bmp", "Save .bmp.")
-        ("fits", "Save fits2D.")("g,gain", "Define gain.", cxxopts::value<int>())
         ("e,exposure", "Define exposure.", cxxopts::value<double>())
         ("v,version", "Print FreeTure version.")
-        ("display", "Display the grabbed frame.")
         ("l,listdevices", "List connected devices.")
         ("a,listformats", "List device's available pixel formats.")
         ("d,id", "Camera to use. List devices to get IDs.", cxxopts::value<int>())
@@ -366,8 +361,6 @@ int main(int argc, const char** argv)
                     device->setCameraGain(gain);
                     device->initializeCamera();
                     device->startCamera();
-                    if (vm.count("display"))
-                        cv::namedWindow("FreeTure (ESC to stop)", cv::WINDOW_NORMAL);
 
                     /// ------------------------------------------------------------------
                     /// ----------------------- MANAGE FILE NAME
@@ -433,11 +426,6 @@ int main(int argc, const char** argv)
                             /// ------------- DISPLAY CURRENT FRAME
                             /// --------------------
 
-                            if (vm.count("display")) {
-                                cv::imshow("FreeTure (ESC to stop)", frame.mImg);
-                                cv::waitKey(1);
-                            }
-
                             /// ------------- SAVE CURRENT FRAME TO FILE
                             /// ---------------
 
@@ -458,67 +446,6 @@ int main(int argc, const char** argv)
                                 SaveImg::saveBMP(newMat, savePath + fileName + "-" + Conversion::intToString(filenum, 6));
                                 spdlog::info(">> Bmp saved : {}{}-{}.bmp", savePath,
                                     fileName, Conversion::intToString(filenum, 6));
-                            }
-
-                            // Save the frame in Fits 2D.
-                            if (vm.count("fits")) {
-                                spdlog::info(">> Saving fits file ...");
-
-                                Fits fh;
-                                bool useCfg = false;
-                                Fits2D newFits(savePath, logger);
-
-                                cfg.showErrors = true;
-                                if (cfg.stationParamIsCorrect() && cfg.fitskeysParamIsCorrect()) {
-                                    useCfg = true;
-                                    double debObsInSeconds = frame.mDate.hours * 3600 + frame.mDate.minutes * 60 + frame.mDate.seconds;
-                                    double julianDate = TimeDate::gregorianToJulian(frame.mDate);
-                                    double julianCentury = TimeDate::julianCentury(julianDate);
-                                    double sideralT = TimeDate::localSideralTime_2(
-                                        julianCentury,
-                                        frame.mDate.hours,
-                                        frame.mDate.minutes,
-                                        (int)frame.mDate.seconds,
-                                        fh.kSITELONG);
-                                    newFits.kCRVAL1 = sideralT;
-                                    newFits.loadKeys(cfg.getFitskeysParam(),
-                                        cfg.getStationParam());
-                                }
-
-                                newFits.kGAINDB = (int)gain;
-                                newFits.kELAPTIME = exp / 1000000.0;
-                                newFits.kEXPOSURE = exp / 1000000.0;
-                                newFits.kONTIME = exp / 1000000.0;
-                                newFits.kDATEOBS = TimeDate::getIsoExtendedFormatDate(
-                                    frame.mDate);
-                                newFits.kCTYPE1 = "RA---ARC";
-                                newFits.kCTYPE2 = "DEC--ARC";
-                                newFits.kEQUINOX = 2000.0;
-
-                                if (frame.mFormat == MONO12) {
-                                    // Create FITS image with BITPIX =
-                                    // SHORT_IMG (16-bits signed integers),
-                                    // pixel with TSHORT (signed short)
-                                    if (newFits.writeFits(
-                                            frame.mImg, S16,
-                                            fileName + "-" + Conversion::intToString(filenum, 6)))
-                                        spdlog::info(">> Fits saved in : {}{}-{}.fits",
-                                            savePath,
-                                            fileName,
-                                            Conversion::intToString(filenum, 6));
-                                } else {
-                                    // Create FITS image with BITPIX =
-                                    // BYTE_IMG (8-bits unsigned integers),
-                                    // pixel with TBYTE (8-bit unsigned
-                                    // byte)
-                                    if (newFits.writeFits(
-                                            frame.mImg, UC8,
-                                            fileName + "-" + Conversion::intToString(filenum, 6)))
-                                        spdlog::info(">> Fits saved in : {}{}-{}.fits",
-                                            savePath,
-                                            fileName,
-                                            Conversion::intToString(filenum, 6));
-                                }
                             }
 
                             filenum++;
@@ -591,7 +518,7 @@ int main(int argc, const char** argv)
                     /// ------------------------------------------------------------------
 
                     // Circular buffer to store last n grabbed frames.
-                    circular_buffer<Frame> frameBuffer(
+                    circular_buffer<std::shared_ptr<Frame>> frameBuffer(
                         cfg.getDetParam().ACQ_BUFFER_SIZE * cfg.getCamParam().ACQ_FPS);
                     mutex frameBuffer_m;
                     condition_variable frameBuffer_c;
@@ -599,10 +526,6 @@ int main(int argc, const char** argv)
                     bool signalDet = false;
                     mutex signalDet_m;
                     condition_variable signalDet_c;
-
-                    bool signalStack = false;
-                    mutex signalStack_m;
-                    condition_variable signalStack_c;
 
                     mutex cfg_m;
 
@@ -613,7 +536,6 @@ int main(int argc, const char** argv)
 
                     AcqThread* acqThread = NULL;
                     DetThread* detThread = NULL;
-                    StackThread* stackThread = NULL;
 
                     try {
                         // Create detection thread.
@@ -635,32 +557,13 @@ int main(int argc, const char** argv)
                                 throw "Fail to start detection thread.";
                         }
 
-                        // Create stack thread.
-                        if (cfg.getStackParam().STACK_ENABLED) {
-                            logger->info("Start to create stack Thread.");
-
-                            stackThread = new StackThread(
-                                &signalStack, &signalStack_m,
-                                &signalStack_c, &frameBuffer,
-                                &frameBuffer_m, &frameBuffer_c,
-                                cfg.getDataParam(), cfg.getStackParam(),
-                                cfg.getStationParam(),
-                                cfg.getCamParam().ACQ_FORMAT,
-                                cfg.getFitskeysParam());
-
-                            stackThread->setFrameStats(frameStats);
-                            if (!stackThread->startThread())
-                                throw "Fail to start stack thread.";
-                        }
 
                         // Create acquisition thread.
                         acqThread = new AcqThread(
                             &frameBuffer, &frameBuffer_m, &frameBuffer_c,
-                            &signalStack, &signalStack_m, &signalStack_c,
                             &signalDet, &signalDet_m, &signalDet_c,
-                            detThread, stackThread, cfg.getDeviceID(),
-                            cfg.getDataParam(), cfg.getStackParam(),
-                            cfg.getStationParam(), cfg.getDetParam(),
+                            detThread, cfg.getDeviceID(),
+                            cfg.getDataParam(), cfg.getStationParam(), cfg.getDetParam(),
                             cfg.getCamParam(), cfg.getFramesParam(),
                             cfg.getVidParam(), cfg.getFitskeysParam());
                         acqThread->setFrameStats(frameStats);
@@ -735,15 +638,6 @@ int main(int argc, const char** argv)
                                         break;
                                     }
                                 }
-
-                                if (stackThread != NULL) {
-                                    if (!stackThread->getRunStatus()) {
-                                        logger->critical(
-                                            "StackThread not running. "
-                                            "Stopping the process ...");
-                                        break;
-                                    }
-                                }
                             }
 #ifdef LINUX
                             nonblock(0);
@@ -765,12 +659,6 @@ int main(int argc, const char** argv)
                             detThread = nullptr;
                         }
 
-                        if (stackThread != nullptr) {
-                            stackThread->stopThread();
-                            delete stackThread;
-                            stackThread = nullptr;
-                        }
-
                         acqThread->stopThread();
                         delete acqThread;
                     }
@@ -778,11 +666,6 @@ int main(int argc, const char** argv)
                     if (detThread != NULL) {
                         detThread->stopThread();
                         delete detThread;
-                    }
-
-                    if (stackThread != NULL) {
-                        stackThread->stopThread();
-                        delete stackThread;
                     }
                 }
 
@@ -947,110 +830,6 @@ int main(int argc, const char** argv)
                                 savePath,
                                 fileName,
                                 Conversion::intToString(filenum, 6));
-                        }
-
-                        // Save the frame in Fits 2D.
-                        if (vm.count("fits")) {
-                            spdlog::info(">> Saving fits file ...");
-
-                            Fits fh;
-                            bool useCfg = false;
-                            Fits2D newFits(savePath, logger);
-
-                            cfg.showErrors = true;
-                            if (cfg.stationParamIsCorrect() && cfg.fitskeysParamIsCorrect()) {
-                                useCfg = true;
-                                double debObsInSeconds = frame.mDate.hours * 3600 + frame.mDate.minutes * 60 + frame.mDate.seconds;
-                                double julianDate = TimeDate::gregorianToJulian(
-                                    frame.mDate);
-                                double julianCentury = TimeDate::julianCentury(julianDate);
-                                double sideralT = TimeDate::localSideralTime_2(
-                                    julianCentury, frame.mDate.hours,
-                                    frame.mDate.minutes,
-                                    (int)frame.mDate.seconds,
-                                    fh.kSITELONG);
-                                newFits.kCRVAL1 = sideralT;
-                                newFits.loadKeys(cfg.getFitskeysParam(),
-                                    cfg.getStationParam());
-                            }
-
-                            newFits.kGAINDB = (int)gain;
-                            newFits.kELAPTIME = exp / 1000000.0;
-                            newFits.kEXPOSURE = exp / 1000000.0;
-                            newFits.kONTIME = exp / 1000000.0;
-                            newFits.kDATEOBS = TimeDate::getIsoExtendedFormatDate(
-                                frame.mDate);
-                            newFits.kCTYPE1 = "RA---ARC";
-                            newFits.kCTYPE2 = "DEC--ARC";
-                            newFits.kEQUINOX = 2000.0;
-
-                            if (frame.mFormat == MONO12) {
-                                // Create FITS image with BITPIX = SHORT_IMG
-                                // (16-bits signed integers), pixel with
-                                // TSHORT (signed short)
-                                if (newFits.writeFits(
-                                        frame.mImg, S16,
-                                        fileName + "-" + Conversion::intToString(filenum, 6)))
-                                    spdlog::info(">> Fits saved in : {}{}-{}.fits",
-                                        savePath,
-                                        fileName,
-                                        Conversion::intToString(filenum, 6));
-                            } else {
-                                // Create FITS image with BITPIX = BYTE_IMG
-                                // (8-bits unsigned integers), pixel with
-                                // TBYTE (8-bit unsigned byte)
-                                if (newFits.writeFits(
-                                        frame.mImg, UC8,
-                                        fileName + "-" + Conversion::intToString(filenum, 6)))
-                                    spdlog::info(">> Fits saved in : {}{}-{}.fits",
-                                        savePath,
-                                        fileName,
-                                        Conversion::intToString(filenum, 6));
-                            }
-
-                            // Send fits by mail if configuration file is
-                            // correct.
-#if 0
-                            if (vm.count("sendbymail") && useCfg) {
-                                if (cfg.mailParamIsCorrect()) {
-                                    vector<string> mailAttachments;
-                                    mailAttachments.push_back(
-                                        savePath + fileName + "-" + Conversion::intToString(filenum, 6) + ".fits");
-
-                                    SMTPClient::sendMail(
-                                        cfg.getMailParam().MAIL_SMTP_SERVER,
-                                        cfg.getMailParam().MAIL_SMTP_LOGIN,
-                                        cfg.getMailParam()
-                                            .MAIL_SMTP_PASSWORD,
-                                        "freeture@snap",
-                                        cfg.getMailParam().MAIL_RECIPIENTS,
-                                        fileName + "-" + Conversion::intToString(filenum, 6) + ".fits",
-                                        " Exposure time : " + Conversion::intToString((int)exp) + "\n Gain : " + Conversion::intToString((int)gain),
-                                        mailAttachments,
-                                        cfg.getMailParam()
-                                            .MAIL_CONNECTION_TYPE);
-                                }
-                            }
-#endif
-                        }
-
-                        // Display the frame in an opencv window
-                        if (vm.count("display")) {
-                            spdlog::info(">> Display single capture.");
-
-                            Mat temp, temp1;
-                            frame.mImg.copyTo(temp1);
-
-                            if (frame.mFormat == MONO12) {
-                                Mat gammaCorrected = ImgProcessing::correctGammaOnMono12(temp1, 2.2);
-                                temp = Conversion::convertTo8UC1(gammaCorrected);
-                            } else {
-                                temp = ImgProcessing::correctGammaOnMono8(temp1, 2.2);
-                            }
-
-                            cv::namedWindow("FreeTure (Press a key to close)", WINDOW_NORMAL);
-                            cv::imshow("FreeTure (Press a key to close)", temp);
-                            cv::waitKey(0);
                         }
                     }
                 }
