@@ -37,12 +37,11 @@
 #include "Frame.h"
 using namespace cv;
 
-Frame::Frame(Mat capImg, int g, double e, string acquisitionDate):
+Frame::Frame(Mat capImg, int g, double e):
 mExposure(e), mGain(g), mFileName("noFileName"), mFrameRemaining(0),
 mFrameNumber(0), mFps(30), mFormat(MONO8), mSaturatedValue(255) {
 
     capImg.copyTo(mImg);
-    mDate = TimeDate::splitIsoExtendedDate(acquisitionDate);
     mStartX = 0;
     mStartY = 0;
     mWidth = 0;

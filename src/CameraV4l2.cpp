@@ -665,7 +665,7 @@ bool CameraV4l2::grabImage(Frame &newFrame)
     if (grabSuccess) {
         ImageBuffer = (unsigned char *) buffers[buf.index].start;
 
-        newFrame.mDate = TimeDate::splitIsoExtendedDate(TimeDate::IsoExtendedStringNow());
+        newFrame.mDate.Reset();
 
         double fps = 0;
         if (getFPS(fps))
@@ -753,7 +753,7 @@ bool CameraV4l2::grabSingleImage(Frame &frame, int camID)
 
     if (grabSuccess) {
         ImageBuffer = (unsigned char *) buffers[buf.index].start;
-        frame.mDate = TimeDate::splitIsoExtendedDate(TimeDate::IsoExtendedStringNow());
+        frame.mDate.Reset();
 
         double fps = 0;
         if (getFPS(fps))

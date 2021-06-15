@@ -41,6 +41,7 @@
 #include <list>
 #include <string>
 #include <vector>
+#include <ctime>
 
 using namespace std;
 using namespace std::chrono;
@@ -49,7 +50,7 @@ class TimeDate {
 
 public:
     struct Date {
-
+        std::chrono::system_clock::time_point tp;
         int year;
         int month;
         int day;
@@ -65,6 +66,26 @@ public:
             , minutes(0)
             , seconds(0)
         {
+            Reset();
+        }
+
+        Date(std::chrono::system_clock::time_point _tp)
+            : tp(_tp)
+        {
+            Reset(tp);
+        }
+
+        void Reset(std::chrono::system_clock::time_point _tp = system_clock::now())
+        {
+            tp = _tp;
+			auto t = system_clock::to_time_t(tp);
+            auto time = std::localtime(&t);
+            year = time->tm_year + 1900;
+            month = time->tm_mon + 1;
+            day = time->tm_mday;
+            hours = time->tm_hour;
+            minutes = time->tm_min;
+            seconds = time->tm_sec;
         }
     };
 

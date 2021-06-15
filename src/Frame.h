@@ -64,7 +64,7 @@ class Frame {
         int                 mWidth;
         int                 mHeight;
 
-        Frame(cv::Mat capImg, int g, double e, string acquisitionDate);
+        Frame(cv::Mat capImg, int g, double e);
 
         Frame();
 

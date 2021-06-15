@@ -119,7 +119,7 @@ bool CameraVideo::grabImage(Frame &img)
         //BGR (3 channels) to G (1 channel)
         cvtColor(frame, frame, COLOR_BGR2GRAY);
 
-        Frame f = Frame(frame, 0, 0, TimeDate::IsoExtendedStringNow());
+        Frame f = Frame(frame, 0, 0);
 
         img = f;
         img.mFrameNumber = mCap.get(CAP_PROP_POS_FRAMES);

@@ -1199,14 +1199,10 @@ void DetectionTemporal::analyseRegion(
 							index++;
 						}
 					}
-
 					break;
-
 					case 2:
-
 					{
 						nbRoiNotAnalysed++;
-
 						/* vector<LocalEvent>::iterator it;
 							 vector<LocalEvent>::iterator itLEbase;
 							 it = listLE.begin();
@@ -1290,7 +1286,6 @@ void DetectionTemporal::analyseRegion(
 							 }*/
 
 					}
-
 					break;
 					}
 				}

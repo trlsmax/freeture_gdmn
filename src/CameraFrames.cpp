@@ -254,7 +254,7 @@ bool CameraFrames::grabImage(Frame& img)
             break;
         }
 
-        Frame f = Frame(resMat, 0, 0, TimeDate::IsoExtendedStringNow());
+        Frame f = Frame(resMat, 0, 0);
 
         img = f;
 

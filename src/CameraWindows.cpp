@@ -230,8 +230,8 @@ bool  CameraWindows::grabImage(Frame &newFrame){
         cv::Mat image( mHeight, mWidth, CV_8UC3, mBuffer );
         Mat img;
         cv::cvtColor(image, img, CV_BGR2GRAY);
-        string acquisitionDate = TimeDate::IsoExtendedStringNow();
-        newFrame = Frame(img, 0, 0, acquisitionDate);
+        //string acquisitionDate = TimeDate::IsoExtendedStringNow();
+        newFrame = Frame(img, 0, 0);
         newFrame.mFps = 0;
         newFrame.mFormat = MONO8;
         newFrame.mSaturatedValue = 255;

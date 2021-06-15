@@ -204,11 +204,9 @@ void AcqThread::run()
 
                 // Grab a frame.
                 if (mDevice->runContinuousCapture(newFrame)) {
-                    logger->debug("============= FRAME {} =============",
-                        newFrame.mFrameNumber);
+                    logger->debug("============= FRAME {} =============", newFrame.mFrameNumber);
                     if (printFrameStats) {
-                        spdlog::debug("============= FRAME {} =============",
-                            newFrame.mFrameNumber);
+                        spdlog::debug("============= FRAME {} =============", newFrame.mFrameNumber);
                     }
 
                     // If camera type in input is FRAMES or VIDEO.
