@@ -6,3 +6,5 @@
 /vs2019/x64/Debug*
 /vs2019/x64/Release*
 /build
+/src/config.h
+/config.h

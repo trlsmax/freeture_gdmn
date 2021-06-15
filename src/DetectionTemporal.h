@@ -68,14 +68,14 @@ using namespace cb;
 
 class DetectionTemporal : public Detection {
 private:
-    vector<GlobalEvent> mListGlobalEvents;  // List of global events (Events
+    list<GlobalEvent> mListGlobalEvents;  // List of global events (Events
                                             // spread on several frames).
     vector<cv::Point> mSubdivisionPos;  // Position (origin in top left) of 64 subdivisions.
     vector<cv::Scalar> mListColors;  // One color per local event.
     cv::Mat mLocalMask;              // Mask used to remove isolated white pixels.
     bool mSubdivisionStatus;  // If subdivisions positions have been computed.
     cv::Mat mPrevThresholdedMap;
-    vector<GlobalEvent>::iterator mGeToSave;  // Global event to save.
+    list<GlobalEvent>::iterator mGeToSave;  // Global event to save.
     int mRoiSize[2];
     int mImgNum;     // Current frame number.
     cv::Mat mPrevFrame;  // Previous frame.
@@ -124,7 +124,7 @@ private:
 
     void analyseRegion(cv::Mat &subdivision, cv::Mat &absDiffBinaryMap, cv::Mat &eventMap,
                        cv::Mat &posDiff, int posDiffThreshold, cv::Mat &negDiff,
-                       int negDiffThreshold, vector<LocalEvent> &listLE,
+                       int negDiffThreshold, list<LocalEvent> &listLE,
                        cv::Point subdivisionPos, int maxNbLE, int numFrame,
                        string &msg, TimeDate::Date cFrameDate);
 };
