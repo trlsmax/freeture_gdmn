@@ -221,8 +221,9 @@ void DetectionTemporal::saveDetectionInfos(GlobalEvent* ge, string path)
 		string line = "frame_id,datetime,x_fits,y_fits\n";
 		posFile << line;
 
-		vector<std::shared_ptr<LocalEvent>>::iterator itLe;
-		for (itLe = ge->LEList.begin(); itLe != ge->LEList.end(); ++itLe) {
+		int lastX = -1, lastY = -1;
+		float dist = 0.f;
+		for (auto itLe = ge->LEList.begin(); itLe != ge->LEList.end(); ++itLe) {
 			if (numFirstFrame == -1)
 				numFirstFrame = (*itLe)->getNumFrame();
 
@@ -237,6 +238,12 @@ void DetectionTemporal::saveDetectionInfos(GlobalEvent* ge, string path)
 				positionY = mPrevFrame.rows - pos.y;
 			}
 
+			if (itLe != ge->LEList.begin()) {
+				dist += sqrtf((pos.x - lastX) * (pos.x - lastX) + (positionY - lastY) * (positionY - lastY));
+			}
+			lastX = pos.x;
+			lastY = positionY;
+
 			// NUM_FRAME    POSITIONX     POSITIONY (inversed)
 			// string line = Conversion::intToString(itLE->getNumFrame() -
 			// numFirstFrame + nbFramesAround) + "               (" +
@@ -247,6 +254,11 @@ void DetectionTemporal::saveDetectionInfos(GlobalEvent* ge, string path)
 			posFile << line;
 		}
 
+		auto t = std::chrono::duration_cast<std::chrono::milliseconds>(
+			ge->LEList.back()->mFrameAcqDate.tp - ge->LEList.front()->mFrameAcqDate.tp).count();
+		float speed = dist * 1000 / t;
+		line = "Speed," + std::to_string(speed) + ",pixel/s";
+		posFile << line;
 		posFile.close();
 	}
 }
@@ -309,9 +321,13 @@ std::shared_ptr<GlobalEvent> DetectionTemporal::runDetection(std::shared_ptr<Fra
 		// -------------------------------
 
 		if (mdtp.DET_DOWNSAMPLE_ENABLED) {
-			tDownsample = (double)getTickCount();
 			pyrDown(c->mImg, currImg, Size(c->mImg.cols / 2, c->mImg.rows / 2));
-			tDownsample = ((double)getTickCount() - tDownsample);
+			if (mMask.data && (mMask.rows != currImg.rows || mMask.cols != currImg.cols)) {
+				spdlog::info("Down sample mask");
+				Mat tmp;
+				mMask.copyTo(tmp);
+				cv::resize(tmp, mMask, Size(c->mImg.cols / 2, c->mImg.rows / 2));
+			}
 		}
 		else {
 			c->mImg.copyTo(currImg);
@@ -337,44 +353,34 @@ std::shared_ptr<GlobalEvent> DetectionTemporal::runDetection(std::shared_ptr<Fra
 		Mat absdiffImg, posDiffImg, negDiffImg;
 
 		// Absolute difference.
-		tAbsDiff = (double)getTickCount();
 		cv::absdiff(currImg, mPrevFrame, absdiffImg);
-		tAbsDiff = (double)getTickCount() - tAbsDiff;
 
 		// Positive difference.
-		tPosDiff = (double)getTickCount();
 		cv::subtract(currImg, mPrevFrame, posDiffImg, mMask);
-		tPosDiff = (double)getTickCount() - tPosDiff;
 
 		// Negative difference.
-		tNegDiff = (double)getTickCount();
 		cv::subtract(mPrevFrame, currImg, negDiffImg, mMask);
-		tNegDiff = (double)getTickCount() - tNegDiff;
 
 		// ---------------------------------
 		//  Dilatate absolute difference.
 		// ---------------------------------
 
-		tDilate = (double)getTickCount();
 		int dilation_size = 2;
 		Mat element = getStructuringElement(
 			MORPH_RECT, Size(2 * dilation_size + 1, 2 * dilation_size + 1),
 			Point(dilation_size, dilation_size));
 		cv::dilate(absdiffImg, absdiffImg, element);
-		tDilate = (double)getTickCount() - tDilate;
 
 		// ------------------------------------------------------------------------------
 		//   Threshold absolute difference / positive difference / negative
 		//   difference
 		// ------------------------------------------------------------------------------
 
-		tThreshold = (double)getTickCount();
 		Mat absDiffBinaryMap = ImgProcessing::thresholding( absdiffImg, mMask, 3, Thresh::MEAN);
-		tThreshold = (double)getTickCount() - tThreshold;
 
 		Scalar meanPosDiff, stddevPosDiff, meanNegDiff, stddevNegDiff;
-		meanStdDev(posDiffImg, meanPosDiff, stddevPosDiff, mMask);
-		meanStdDev(negDiffImg, meanNegDiff, stddevNegDiff, mMask);
+		cv::meanStdDev(posDiffImg, meanPosDiff, stddevPosDiff, mMask);
+		cv::meanStdDev(negDiffImg, meanNegDiff, stddevNegDiff, mMask);
 		int posThreshold = stddevPosDiff[0] * 5 + 10;
 		int negThreshold = stddevNegDiff[0] * 5 + 10;
 

@@ -211,7 +211,7 @@ void DetThread::run()
                                 time_point<system_clock, std::chrono::seconds> nowTimeSec = time_point_cast<std::chrono::seconds>(system_clock::now());
                                 for (auto itr = listGlobalEvent.begin(); itr != listGlobalEvent.end();) {
                                     itr->first->AddFrame(lastFrame, false);
-                                    if (true/*(nowTimeSec - itr->second).count() > mdtp.DET_TIME_AROUND*/) {
+                                    if ((nowTimeSec - itr->second).count() > mdtp.DET_TIME_AROUND) {
                                         //logger->info("Event completed.");
                                         spdlog::info("Event completed.");
                                         // Build event directory.
@@ -227,8 +227,8 @@ void DetThread::run()
                                         string eventBase = mstp.TELESCOP + "_" + TimeDate::getYYYY_MM_DD_hhmmss(mEventDate);
                                         std::unique_lock<std::mutex> lock3(*frameBuffer_mutex);
                                         itr->first->GetFramesBeforeEvent(frameBuffer);
-                                        pDetMthd->saveDetectionInfos(itr->first.get(), mEventPath + eventBase);
                                         lock3.unlock();
+                                        pDetMthd->saveDetectionInfos(itr->first.get(), mEventPath + eventBase);
                                         if (!saveEventData(itr->first.get()))
                                             spdlog::info("Error saving event data.");
                                         else
