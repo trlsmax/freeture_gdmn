@@ -39,19 +39,9 @@ DetectionTemplate::DetectionTemplate(detectionParam dtp, CamPixFmt fmt):mImgNum(
 
     mdtp = dtp;
 
-    mMaskControl = new Mask(10, dtp.ACQ_MASK_ENABLED, dtp.ACQ_MASK_PATH, dtp.DET_DOWNSAMPLE_ENABLED, fmt, true);
-
 }
 
 DetectionTemplate::~DetectionTemplate() {
-    if(mMaskControl != nullptr)
-        delete mMaskControl;
-}
-
-void DetectionTemplate::setMaskFrameStats( bool frameStats )
-{
-  if(mMaskControl != NULL)
-    mMaskControl-> setFrameStats( frameStats );
 }
 
 void DetectionTemplate::createDebugDirectories(bool cleanDebugDirectory) {
@@ -71,67 +61,59 @@ bool DetectionTemplate::runDetection(Frame &c) {
     //          OPERATIONS
     // --------------------------------
 
-    if(mMaskControl->applyMask(currImg)) {
+    // --------------------------------
+    //      Check previous frame.
+    // --------------------------------
 
-        // --------------------------------
-        //      Check previous frame.
-        // --------------------------------
+    if(!mPrevFrame.data) {
 
-        if(!mPrevFrame.data) {
-
-            cout << "PrevFrame has no data ! " << endl;
-            currImg.copyTo(mPrevFrame);
-            return false;
-
-        }
-
-        Mat absdiffImg;
-        cv::absdiff(currImg, mPrevFrame, absdiffImg);
-
-        // ---------------------------------
-        //  Dilatation absolute difference.
-        // ---------------------------------
-
-        int dilation_size = 2;
-        Mat element = getStructuringElement(MORPH_RECT, Size(2*dilation_size + 1, 2*dilation_size+1), Point(dilation_size, dilation_size));
-        cv::dilate(absdiffImg, absdiffImg, element);
-
-        // ----------------------------------
-        //   Threshold absolute difference.
-        // ----------------------------------
-
-        Mat absDiffBinaryMap = Mat(currImg.rows,currImg.cols, CV_8UC1,Scalar(0));
-        Scalar meanAbsDiff, stddevAbsDiff;
-        cv::meanStdDev(absdiffImg, meanAbsDiff, stddevAbsDiff, mMaskControl->mCurrentMask);
-        int absDiffThreshold = meanAbsDiff[0] * 3;
-
-        if(absdiffImg.type() == CV_16UC1) {
-
-            unsigned short * ptrAbsDiff;
-            unsigned char * ptrMap;
-
-            for(int i = 0; i < absdiffImg.rows; i++) {
-
-                ptrAbsDiff = absdiffImg.ptr<unsigned short>(i);
-                ptrMap = absDiffBinaryMap.ptr<unsigned char>(i);
-
-                for(int j = 0; j < absdiffImg.cols; j++){
-
-                    if(ptrAbsDiff[j] > absDiffThreshold) {
-                        ptrMap[j] = 255;
-                    }
-                }
-            }
-
-        }
-
+        cout << "PrevFrame has no data ! " << endl;
         currImg.copyTo(mPrevFrame);
-
-    }else{
-
-        mPrevFrame.release();
+        return false;
 
     }
+
+    Mat absdiffImg;
+    cv::absdiff(currImg, mPrevFrame, absdiffImg);
+
+    // ---------------------------------
+    //  Dilatation absolute difference.
+    // ---------------------------------
+
+    int dilation_size = 2;
+    Mat element = getStructuringElement(MORPH_RECT, Size(2*dilation_size + 1, 2*dilation_size+1), Point(dilation_size, dilation_size));
+    cv::dilate(absdiffImg, absdiffImg, element);
+
+    // ----------------------------------
+    //   Threshold absolute difference.
+    // ----------------------------------
+
+    Mat absDiffBinaryMap = Mat(currImg.rows,currImg.cols, CV_8UC1,Scalar(0));
+    Scalar meanAbsDiff, stddevAbsDiff;
+    cv::meanStdDev(absdiffImg, meanAbsDiff, stddevAbsDiff, mMask);
+    int absDiffThreshold = meanAbsDiff[0] * 3;
+
+    if(absdiffImg.type() == CV_16UC1) {
+
+        unsigned short * ptrAbsDiff;
+        unsigned char * ptrMap;
+
+        for(int i = 0; i < absdiffImg.rows; i++) {
+
+            ptrAbsDiff = absdiffImg.ptr<unsigned short>(i);
+            ptrMap = absDiffBinaryMap.ptr<unsigned char>(i);
+
+            for(int j = 0; j < absdiffImg.cols; j++){
+
+                if(ptrAbsDiff[j] > absDiffThreshold) {
+                    ptrMap[j] = 255;
+                }
+            }
+        }
+
+    }
+
+    currImg.copyTo(mPrevFrame);
 
     // No detection : return false
     return false;
@@ -148,10 +130,6 @@ void DetectionTemplate::resetDetection(bool loadNewDataSet) {
 
 }
 
-void DetectionTemplate::resetMask() {
-
-
-}
 
 int DetectionTemplate::getEventFirstFrameNb() {
 

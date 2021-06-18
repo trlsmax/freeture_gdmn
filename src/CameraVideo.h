@@ -46,10 +46,8 @@
 #include <string>
 #include <vector>
 #include <filesystem.hpp>
-#include <circular_buffer/circular_buffer.hpp>
 
 using namespace ghc::filesystem;
-using namespace cb;
 using namespace std;
 
 class CameraVideo : public Camera{

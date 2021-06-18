@@ -69,9 +69,9 @@ DetectionTemporal::DetectionTemporal(detectionParam dtp, CamPixFmt fmt)
 	mRoiSize[1] = 10;
 	mdtp = dtp;
 
-	mMaskManager = new Mask(dtp.DET_UPDATE_MASK_FREQUENCY, dtp.ACQ_MASK_ENABLED,
-		dtp.ACQ_MASK_PATH, dtp.DET_DOWNSAMPLE_ENABLED, fmt,
-		dtp.DET_UPDATE_MASK);
+	if (dtp.ACQ_MASK_ENABLED) {
+		mMask = imread(dtp.ACQ_MASK_PATH, IMREAD_GRAYSCALE);
+	}
 
 	// Create local mask to eliminate single white pixels.
 	Mat maskTemp(3, 3, CV_8UC1, Scalar(255));
@@ -88,14 +88,6 @@ DetectionTemporal::DetectionTemporal(detectionParam dtp, CamPixFmt fmt)
 
 DetectionTemporal::~DetectionTemporal()
 {
-	if (mMaskManager != NULL)
-		delete mMaskManager;
-}
-
-void DetectionTemporal::setMaskFrameStats(bool frameStats)
-{
-	if (mMaskManager != NULL)
-		mMaskManager->setFrameStats(frameStats);
 }
 
 void DetectionTemporal::resetDetection(bool loadNewDataSet)
@@ -112,8 +104,6 @@ void DetectionTemporal::resetDetection(bool loadNewDataSet)
 		createDebugDirectories(false);
 	}
 }
-
-void DetectionTemporal::resetMask() { mMaskManager->resetMask(); }
 
 void DetectionTemporal::createDebugDirectories(bool cleanDebugDirectory)
 {
@@ -266,6 +256,7 @@ vector<string> DetectionTemporal::getDebugFiles() { return debugFiles; }
 std::shared_ptr<GlobalEvent> DetectionTemporal::runDetection(std::shared_ptr<Frame> c)
 {
 	auto logger = spdlog::get("det_logger");
+
 	if (!mSubdivisionStatus) {
 		mSubdivisionPos.clear();
 
@@ -310,7 +301,7 @@ std::shared_ptr<GlobalEvent> DetectionTemporal::runDetection(std::shared_ptr<Fra
 		/// %%%%%%%%%%%%%%%%%%%%%%%%%%% STEP 1 : FILETRING / THRESHOLDING %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 		/// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-		double tstep1 = (double)getTickCount();
+		tStep1 = (double)getTickCount();
 		Mat currImg;
 
 		// ------------------------------
@@ -326,466 +317,436 @@ std::shared_ptr<GlobalEvent> DetectionTemporal::runDetection(std::shared_ptr<Fra
 			c->mImg.copyTo(currImg);
 		}
 
-		// Apply mask on currImg.
-		// If true is returned, it means that the mask has been updated and
-		// applied on currImg. Detection process can't continue. If false is
-		// returned, it means that the mask has not been updated. Detection
-		// process can continue.
-		if (!mMaskManager->applyMask(currImg)) {
-			// --------------------------------
-			//      Check previous frame.
-			// --------------------------------
+		if (!mMask.data) {
+			mMask = Mat(currImg.rows, currImg.cols, CV_8UC1,Scalar(255));
+		}
 
-			if (!mPrevFrame.data) {
-				currImg.copyTo(mPrevFrame);
-				return nullptr;
-			}
+		// --------------------------------
+		//      Check previous frame.
+		// --------------------------------
 
-			// --------------------------------
-			//          Differences.
-			// --------------------------------
-
-			Mat absdiffImg, posDiffImg, negDiffImg;
-
-			// Absolute difference.
-			tAbsDiff = (double)getTickCount();
-			cv::absdiff(currImg, mPrevFrame, absdiffImg);
-			tAbsDiff = (double)getTickCount() - tAbsDiff;
-
-			// Positive difference.
-			tPosDiff = (double)getTickCount();
-			cv::subtract(currImg, mPrevFrame, posDiffImg, mMaskManager->mCurrentMask);
-			tPosDiff = (double)getTickCount() - tPosDiff;
-
-			// Negative difference.
-			tNegDiff = (double)getTickCount();
-			cv::subtract(mPrevFrame, currImg, negDiffImg, mMaskManager->mCurrentMask);
-			tNegDiff = (double)getTickCount() - tNegDiff;
-
-			// ---------------------------------
-			//  Dilatate absolute difference.
-			// ---------------------------------
-
-			tDilate = (double)getTickCount();
-			int dilation_size = 2;
-			Mat element = getStructuringElement(
-				MORPH_RECT, Size(2 * dilation_size + 1, 2 * dilation_size + 1),
-				Point(dilation_size, dilation_size));
-			cv::dilate(absdiffImg, absdiffImg, element);
-			tDilate = (double)getTickCount() - tDilate;
-
-			// ------------------------------------------------------------------------------
-			//   Threshold absolute difference / positive difference / negative
-			//   difference
-			// ------------------------------------------------------------------------------
-
-			tThreshold = (double)getTickCount();
-			Mat absDiffBinaryMap = ImgProcessing::thresholding(
-				absdiffImg, mMaskManager->mCurrentMask, 3, Thresh::MEAN);
-			tThreshold = (double)getTickCount() - tThreshold;
-
-			Scalar meanPosDiff, stddevPosDiff, meanNegDiff, stddevNegDiff;
-			meanStdDev(posDiffImg, meanPosDiff, stddevPosDiff, mMaskManager->mCurrentMask);
-			meanStdDev(negDiffImg, meanNegDiff, stddevNegDiff, mMaskManager->mCurrentMask);
-			int posThreshold = stddevPosDiff[0] * 5 + 10;
-			int negThreshold = stddevNegDiff[0] * 5 + 10;
-
-			if (mdtp.DET_DEBUG) {
-				Mat posBinaryMap = ImgProcessing::thresholding(
-					posDiffImg, mMaskManager->mCurrentMask, 5, Thresh::STDEV);
-				Mat negBinaryMap = ImgProcessing::thresholding(
-					negDiffImg, mMaskManager->mCurrentMask, 5, Thresh::STDEV);
-
-				SaveImg::saveBMP(Conversion::convertTo8UC1(currImg),
-					mDebugCurrentPath + "/original/frame_" + Conversion::intToString(c->mFrameNumber));
-				SaveImg::saveBMP(posBinaryMap,
-					mDebugCurrentPath + "/pos_difference_thresholded/frame_" + Conversion::intToString(c->mFrameNumber));
-				SaveImg::saveBMP(negBinaryMap,
-					mDebugCurrentPath + "/neg_difference_thresholded/frame_" + Conversion::intToString(c->mFrameNumber));
-				SaveImg::saveBMP(absDiffBinaryMap,
-					mDebugCurrentPath + "/absolute_difference_thresholded/frame_" + Conversion::intToString(c->mFrameNumber));
-				SaveImg::saveBMP(absdiffImg,
-					mDebugCurrentPath + "/absolute_difference/frame_" + Conversion::intToString(c->mFrameNumber));
-				SaveImg::saveBMP(Conversion::convertTo8UC1(posDiffImg),
-					mDebugCurrentPath + "/pos_difference/frame_" + Conversion::intToString(c->mFrameNumber));
-				SaveImg::saveBMP(Conversion::convertTo8UC1(negDiffImg),
-					mDebugCurrentPath + "/neg_difference/frame_" + Conversion::intToString(c->mFrameNumber));
-			}
-
-			// Current frame is stored as the previous frame.
+		if (!mPrevFrame.data) {
 			currImg.copyTo(mPrevFrame);
+			return nullptr;
+		}
 
-			tStep1 = (double)getTickCount() - tStep1;
+		// --------------------------------
+		//          Differences.
+		// --------------------------------
 
-			/// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-			/// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% STEP 2 : FIND LOCAL EVENT %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-			/// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+		Mat absdiffImg, posDiffImg, negDiffImg;
 
-			// SUMMARY :
-			// Loop binarized absolute difference image.
-			// For each white pixel, define a Region of interest (ROI) of 10x10
-			// centered in this pixel. Create a new Local Event initialized with
-			// this first ROI or attach this ROI to an existing Local Event.
-			// Loop the ROI in the binarized absolute difference image to store
-			// position of white pixels. Loop the ROI in the positive difference
-			// image to store positions of white pixels. Loop the ROI in the
-			// negative difference image to store positions of white pixels.
-			// Once the list of Local Event has been completed :
-			// Analyze each local event in order to check that pixels can be
-			// clearly split in two groups (negative, positive).
+		// Absolute difference.
+		tAbsDiff = (double)getTickCount();
+		cv::absdiff(currImg, mPrevFrame, absdiffImg);
+		tAbsDiff = (double)getTickCount() - tAbsDiff;
 
-			list<std::shared_ptr<LocalEvent>> listLocalEvents;
-			tStep2 = (double)getTickCount();
+		// Positive difference.
+		tPosDiff = (double)getTickCount();
+		cv::subtract(currImg, mPrevFrame, posDiffImg, mMask);
+		tPosDiff = (double)getTickCount() - tPosDiff;
 
-			// Event map for the current frame.
-			Mat eventMap = Mat(currImg.rows, currImg.cols, CV_8UC3, Scalar(0, 0, 0));
+		// Negative difference.
+		tNegDiff = (double)getTickCount();
+		cv::subtract(mPrevFrame, currImg, negDiffImg, mMask);
+		tNegDiff = (double)getTickCount() - tNegDiff;
 
-			// ----------------------------------
-			//        Search local events.
-			// ----------------------------------
+		// ---------------------------------
+		//  Dilatate absolute difference.
+		// ---------------------------------
 
-			// Iterator on list of sub-regions.
-			vector<Point>::iterator itR;
+		tDilate = (double)getTickCount();
+		int dilation_size = 2;
+		Mat element = getStructuringElement(
+			MORPH_RECT, Size(2 * dilation_size + 1, 2 * dilation_size + 1),
+			Point(dilation_size, dilation_size));
+		cv::dilate(absdiffImg, absdiffImg, element);
+		tDilate = (double)getTickCount() - tDilate;
 
-			for (itR = mSubdivisionPos.begin(); itR != mSubdivisionPos.end(); ++itR) {
-				// Extract subdivision from binary map.
-				Mat subdivision = absDiffBinaryMap(
-					Rect(itR->x, itR->y, absDiffBinaryMap.cols / 8,
-						absDiffBinaryMap.rows / 8));
+		// ------------------------------------------------------------------------------
+		//   Threshold absolute difference / positive difference / negative
+		//   difference
+		// ------------------------------------------------------------------------------
 
-				// Check if there is white pixels.
-				if (countNonZero(subdivision) > 0) {
-					std::string debugMsg = "";
-					analyseRegion(subdivision, absDiffBinaryMap, eventMap,
-						posDiffImg, posThreshold, negDiffImg,
-						negThreshold, listLocalEvents, (*itR),
-						mdtp.temporal.DET_LE_MAX, c->mFrameNumber,
-						debugMsg, c->mDate);
+		tThreshold = (double)getTickCount();
+		Mat absDiffBinaryMap = ImgProcessing::thresholding( absdiffImg, mMask, 3, Thresh::MEAN);
+		tThreshold = (double)getTickCount() - tThreshold;
+
+		Scalar meanPosDiff, stddevPosDiff, meanNegDiff, stddevNegDiff;
+		meanStdDev(posDiffImg, meanPosDiff, stddevPosDiff, mMask);
+		meanStdDev(negDiffImg, meanNegDiff, stddevNegDiff, mMask);
+		int posThreshold = stddevPosDiff[0] * 5 + 10;
+		int negThreshold = stddevNegDiff[0] * 5 + 10;
+
+		if (mdtp.DET_DEBUG) {
+			Mat posBinaryMap = ImgProcessing::thresholding( posDiffImg, mMask, 5, Thresh::STDEV);
+			Mat negBinaryMap = ImgProcessing::thresholding( negDiffImg, mMask, 5, Thresh::STDEV);
+
+			SaveImg::saveBMP(Conversion::convertTo8UC1(currImg),
+				mDebugCurrentPath + "/original/frame_" + Conversion::intToString(c->mFrameNumber));
+			SaveImg::saveBMP(posBinaryMap,
+				mDebugCurrentPath + "/pos_difference_thresholded/frame_" + Conversion::intToString(c->mFrameNumber));
+			SaveImg::saveBMP(negBinaryMap,
+				mDebugCurrentPath + "/neg_difference_thresholded/frame_" + Conversion::intToString(c->mFrameNumber));
+			SaveImg::saveBMP(absDiffBinaryMap,
+				mDebugCurrentPath + "/absolute_difference_thresholded/frame_" + Conversion::intToString(c->mFrameNumber));
+			SaveImg::saveBMP(absdiffImg,
+				mDebugCurrentPath + "/absolute_difference/frame_" + Conversion::intToString(c->mFrameNumber));
+			SaveImg::saveBMP(Conversion::convertTo8UC1(posDiffImg),
+				mDebugCurrentPath + "/pos_difference/frame_" + Conversion::intToString(c->mFrameNumber));
+			SaveImg::saveBMP(Conversion::convertTo8UC1(negDiffImg),
+				mDebugCurrentPath + "/neg_difference/frame_" + Conversion::intToString(c->mFrameNumber));
+		}
+
+		// Current frame is stored as the previous frame.
+		currImg.copyTo(mPrevFrame);
+
+		tStep1 = (double)getTickCount() - tStep1;
+
+		/// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+		/// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% STEP 2 : FIND LOCAL EVENT %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+		/// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+		// SUMMARY :
+		// Loop binarized absolute difference image.
+		// For each white pixel, define a Region of interest (ROI) of 10x10
+		// centered in this pixel. Create a new Local Event initialized with
+		// this first ROI or attach this ROI to an existing Local Event.
+		// Loop the ROI in the binarized absolute difference image to store
+		// position of white pixels. Loop the ROI in the positive difference
+		// image to store positions of white pixels. Loop the ROI in the
+		// negative difference image to store positions of white pixels.
+		// Once the list of Local Event has been completed :
+		// Analyze each local event in order to check that pixels can be
+		// clearly split in two groups (negative, positive).
+
+		list<std::shared_ptr<LocalEvent>> listLocalEvents;
+		tStep2 = (double)getTickCount();
+
+		// Event map for the current frame.
+		Mat eventMap = Mat(currImg.rows, currImg.cols, CV_8UC3, Scalar(0, 0, 0));
+
+		// ----------------------------------
+		//        Search local events.
+		// ----------------------------------
+
+		for (auto itR = mSubdivisionPos.begin(); itR != mSubdivisionPos.end(); ++itR) {
+			// Extract subdivision from binary map.
+			Mat subdivision = absDiffBinaryMap(
+				Rect(itR->x, itR->y, absDiffBinaryMap.cols / 8,
+					absDiffBinaryMap.rows / 8));
+
+			// Check if there is white pixels.
+			if (countNonZero(subdivision) > 0) {
+				analyseRegion(subdivision, absDiffBinaryMap, eventMap,
+					posDiffImg, posThreshold, negDiffImg,
+					negThreshold, listLocalEvents, (*itR),
+					mdtp.temporal.DET_LE_MAX, c->mFrameNumber, c->mDate);
+			}
+		}
+
+		int i = 0;
+		for (auto& ev : listLocalEvents) {
+			ev->setLeIndex(i++);
+		}
+
+		if (mdtp.DET_DEBUG) {
+			SaveImg::saveBMP(eventMap, mDebugCurrentPath + "/event_map_initial/frame_" + Conversion::intToString(c->mFrameNumber));
+		}
+
+		// ----------------------------------
+		//         Link between LE.
+		// ----------------------------------
+
+		// Iterator list on localEvent list : localEvent contains a positive
+		// or negative cluster.
+		list<list<std::shared_ptr<LocalEvent>>::iterator> itLePos, itLeNeg;
+
+		// Search pos and neg alone.
+		for (auto itLE = listLocalEvents.begin(); itLE != listLocalEvents.end(); itLE++) {
+			// Le has pos cluster but no neg cluster.
+			if ((*itLE)->getPosClusterStatus() && !(*itLE)->getNegClusterStatus()) {
+				itLePos.push_back(itLE);
+			}
+			else if (!(*itLE)->getPosClusterStatus() && (*itLE)->getNegClusterStatus()) {
+				itLeNeg.push_back(itLE);
+			}
+		}
+
+		float maxRadius = 50.f;
+		// Try to link a positive cluster to a negative one.
+		for (auto& leP : itLePos) {
+			int nbPotentialNeg = 0;
+			list<std::shared_ptr<LocalEvent>>::iterator itChoose;
+			list<list<std::shared_ptr<LocalEvent>>::iterator>::iterator c;
+
+			for (auto j = itLeNeg.begin(); j != itLeNeg.end(); j++) {
+				Point A = (*leP)->getMassCenter();
+				Point B = (**j)->getMassCenter();
+				float dist = sqrt(pow((A.x - B.x), 2) + pow((A.y - B.y), 2));
+
+				if (dist < maxRadius) {
+					nbPotentialNeg++;
+					itChoose = *j;
+					c = j;
 				}
 			}
 
-			int i = 0;
-			for (auto& ev : listLocalEvents) {
-				ev->setLeIndex(i++);
+			if (nbPotentialNeg == 1) {
+				(*leP)->mergeWithAnOtherLE(**itChoose);
+				(*leP)->setMergedStatus(true);
+				(*itChoose)->setMergedStatus(true);
+				itLeNeg.erase(c);
 			}
+		}
 
-			if (mdtp.DET_DEBUG) {
-				SaveImg::saveBMP(eventMap, mDebugCurrentPath + "/event_map_initial/frame_" + Conversion::intToString(c->mFrameNumber));
+		// Delete pos cluster not merged and negative cluster not merged.
+		// Search pos and neg alone.
+		for (auto itLE = listLocalEvents.begin(); itLE != listLocalEvents.end();) {
+			// Le has pos cluster but no neg cluster.
+			if ( // (itLE->getPosClusterStatus() &&
+				// !itLE->getNegClusterStatus() &&
+				// !itLE->getMergedStatus())||
+				(!(*itLE)->getPosClusterStatus() && (*itLE)->getNegClusterStatus() && (*itLE)->getMergedStatus())) {
+				itLE = listLocalEvents.erase(itLE);
 			}
-
-			// ----------------------------------
-			//         Link between LE.
-			// ----------------------------------
-
-			// Iterator list on localEvent list : localEvent contains a positive
-			// or negative cluster.
-			list<list<std::shared_ptr<LocalEvent>>::iterator> itLePos, itLeNeg;
-
-			// Search pos and neg alone.
-			for (auto itLE = listLocalEvents.begin(); itLE != listLocalEvents.end(); itLE++) {
-				// Le has pos cluster but no neg cluster.
-				if ((*itLE)->getPosClusterStatus() && !(*itLE)->getNegClusterStatus()) {
-					itLePos.push_back(itLE);
-				}
-				else if (!(*itLE)->getPosClusterStatus() && (*itLE)->getNegClusterStatus()) {
-					itLeNeg.push_back(itLE);
-				}
+			else {
+				++itLE;
 			}
+		}
 
-			int maxRadius = 50;
-
-			// Try to link a positive cluster to a negative one.
-			for (auto& leP : itLePos) {
-				int nbPotentialNeg = 0;
-				list<std::shared_ptr<LocalEvent>>::iterator itChoose;
-				list<list<std::shared_ptr<LocalEvent>>::iterator>::iterator c;
-
-				for (auto j = itLeNeg.begin(); j != itLeNeg.end(); j++) {
-					Point A = (*leP)->getMassCenter();
-					Point B = (**j)->getMassCenter();
-					float dist = sqrt(pow((A.x - B.x), 2) + pow((A.y - B.y), 2));
-
-					if (dist < 50) {
-						nbPotentialNeg++;
-						itChoose = *j;
-						c = j;
-					}
+		// -----------------------------------
+		//            Circle TEST.
+		// -----------------------------------
+		for (auto itLE = listLocalEvents.begin(); itLE != listLocalEvents.end();) {
+			if ((*itLE)->getPosClusterStatus() && (*itLE)->getNegClusterStatus()) {
+				if ((*itLE)->localEventIsValid()) {
+					++itLE;
 				}
-
-				if (nbPotentialNeg == 1) {
-					(*leP)->mergeWithAnOtherLE(**itChoose);
-					(*leP)->setMergedStatus(true);
-					(*itChoose)->setMergedStatus(true);
-					itLeNeg.erase(c);
-				}
-			}
-
-			// Delete pos cluster not merged and negative cluster not merged.
-			// Search pos and neg alone.
-			for (auto itLE = listLocalEvents.begin(); itLE != listLocalEvents.end();) {
-				// Le has pos cluster but no neg cluster.
-				if ( // (itLE->getPosClusterStatus() &&
-					// !itLE->getNegClusterStatus() &&
-					// !itLE->getMergedStatus())||
-					(!(*itLE)->getPosClusterStatus() && (*itLE)->getNegClusterStatus() && (*itLE)->getMergedStatus())) {
+				else {
 					itLE = listLocalEvents.erase(itLE);
 				}
-				else {
-					++itLE;
+			}
+			else {
+				++itLE;
+			}
+		}
+
+		if (mdtp.DET_DEBUG) {
+			Mat eventMapFiltered = Mat(currImg.rows, currImg.cols, CV_8UC3, Scalar(0, 0, 0));
+
+			for (auto& le : listLocalEvents) {
+				Mat roiF(10, 10, CV_8UC3, le->getColor());
+
+				for (auto& roi : le->mLeRoiList) {
+					if (roi.x - 5 > 0 && roi.x + 5 < eventMapFiltered.cols && roi.y - 5 > 0 && roi.y + 5 < eventMapFiltered.rows) {
+						roiF.copyTo(eventMapFiltered(Rect(roi.x - 5, roi.y - 5, 10, 10)));
+					}
 				}
 			}
 
-			// -----------------------------------
-			//            Circle TEST.
-			// -----------------------------------
-			for (auto itLE = listLocalEvents.begin(); itLE != listLocalEvents.end();) {
-				if ((*itLE)->getPosClusterStatus() && (*itLE)->getNegClusterStatus()) {
-					if ((*itLE)->localEventIsValid()) {
-						++itLE;
-					}
-					else {
-						itLE = listLocalEvents.erase(itLE);
-					}
-				}
-				else {
-					++itLE;
-				}
-			}
+			SaveImg::saveBMP(eventMapFiltered,
+				mDebugCurrentPath + "/event_map_filtered/frame_" + Conversion::intToString(c->mFrameNumber));
+		}
 
-			if (mdtp.DET_DEBUG) {
-				Mat eventMapFiltered = Mat(currImg.rows, currImg.cols, CV_8UC3, Scalar(0, 0, 0));
+		tStep2 = (double)getTickCount() - tStep2;
 
-				for (auto& le : listLocalEvents) {
-					Mat roiF(10, 10, CV_8UC3, le->getColor());
+		/// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+		/// %%%%%%%%%%%%%%%%%%%%%%%%%% STEP 3 : ATTACH LE TO GE OR CREATE NEW ONE %%%%%%%%%%%%%%%%%%%%%%%%%
+		/// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-					for (auto& roi : le->mLeRoiList) {
-						if (roi.x - 5 > 0 && roi.x + 5 < eventMapFiltered.cols && roi.y - 5 > 0 && roi.y + 5 < eventMapFiltered.rows) {
-							roiF.copyTo(eventMapFiltered(Rect(roi.x - 5, roi.y - 5, 10, 10)));
-						}
-					}
-				}
+		// SUMMARY :
+		// Loop list of local events.
+		// Create a new global event initialized with the current Local
+		// event or attach it to an existing global event. If attached,
+		// check the positive-negative couple of the global event.
 
-				SaveImg::saveBMP(eventMapFiltered,
-					mDebugCurrentPath + "/event_map_filtered/frame_" + Conversion::intToString(c->mFrameNumber));
-			}
+		tStep3 = (double)getTickCount();
 
-			tStep2 = (double)getTickCount() - tStep2;
+		for (auto itLE = listLocalEvents.begin(); itLE != listLocalEvents.end();) {
+			bool LELinked = false;
+			std::shared_ptr<GlobalEvent> pGESelected = nullptr;
+			(*itLE)->setNumFrame(c->mFrameNumber);
 
-			/// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-			/// %%%%%%%%%%%%%%%%%%%%%%%%%% STEP 3 : ATTACH LE TO GE OR CREATE NEW ONE %%%%%%%%%%%%%%%%%%%%%%%%%
-			/// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+			for (auto& ge : mListGlobalEvents) {
+				Mat res = (*itLE)->getMap() & ge->getMapEvent();
 
-			// SUMMARY :
-			// Loop list of local events.
-			// Create a new global event initialized with the current Local
-			// event or attach it to an existing global event. If attached,
-			// check the positive-negative couple of the global event.
+				if (countNonZero(res) > 0) {
+					LELinked = true;
 
-			tStep3 = (double)getTickCount();
-
-			for (auto itLE = listLocalEvents.begin(); itLE != listLocalEvents.end();) {
-				bool LELinked = false;
-				std::shared_ptr<GlobalEvent> pGESelected = nullptr;
-				(*itLE)->setNumFrame(c->mFrameNumber);
-
-				for (auto& ge : mListGlobalEvents) {
-					Mat res = (*itLE)->getMap() & ge->getMapEvent();
-
-					if (countNonZero(res) > 0) {
-						LELinked = true;
-
-						// The current LE has found a possible global event.
-						if (pGESelected) {
-							// cout << "The current LE has found a possible global event."<< endl;
-							// Choose the older global event.
-							if (ge->getAge() > pGESelected->getAge()) {
-								// cout << "Choose the older global event."<< endl;
-								pGESelected = ge;
-							}
-						}
-						else {
-							// cout << "Keep same"<< endl;
+					// The current LE has found a possible global event.
+					if (pGESelected) {
+						// cout << "The current LE has found a possible global event."<< endl;
+						// Choose the older global event.
+						if (ge->getAge() > pGESelected->getAge()) {
+							// cout << "Choose the older global event."<< endl;
 							pGESelected = ge;
 						}
-
-						break;
 					}
-				}
-
-				// Add current LE to an existing GE
-				if (pGESelected) {
-					// cout << "Add current LE to an existing GE ... "<< endl;
-					// Add LE.
-					pGESelected->addLE(*itLE);
-					// cout << "Flag to indicate that a local event has been
-					// added ... "<< endl;
-					// Flag to indicate that a local event has been added.
-					pGESelected->setNewLEStatus(true);
-					// cout << "reset age of the last local event received by
-					// the global event.... "<< endl;
-					// reset age of the last local event received by the global
-					// event.
-					pGESelected->setAgeLastElem(0);
-				}
-				else {
-					// The current LE has not been linked. It became a new GE.
-					if (mListGlobalEvents.size() < mdtp.temporal.DET_GE_MAX) {
-						// cout << "Selecting last available color ... "<< endl;
-						Scalar geColor = Scalar(255, 255, 255); // availableGeColor.back();
-						// cout << "Deleting last available color ... "<< endl;
-						// availableGeColor.pop_back();
-						// cout << "Creating new GE ... "<< endl;
-						std::shared_ptr<GlobalEvent> newGE(std::make_shared<GlobalEvent>(c->mDate, c, currImg.rows, currImg.cols, geColor));
-						// cout << "Adding current LE ... "<< endl;
-						newGE->addLE(*itLE);
-						// cout << "Pushing new LE to GE list  ... "<< endl;
-						// Add the new globalEvent to the globalEvent's list
-						mListGlobalEvents.push_back(newGE);
+					else {
+						// cout << "Keep same"<< endl;
+						pGESelected = ge;
 					}
-				}
 
-				itLE = listLocalEvents.erase(itLE); // Delete the current localEvent.
+					break;
+				}
 			}
 
-			tStep3 = (double)getTickCount() - tStep3;
-
-			/// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-			/// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%% STEP 4 : MANAGE LIST GLOBAL EVENT %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-			/// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-			tStep4 = (double)getTickCount(); // Count process time of step 4.
-			bool saveSignal = false; // Returned signal to indicate to save a GE or not.
-
-			// Loop global event list to check their characteristics.
-			for (auto itGE = mListGlobalEvents.begin(); itGE != mListGlobalEvents.end();) {
-				(*itGE)->setAge((*itGE)->getAge() + 1); // Increment age.
-				// If the current global event has not received any new local
+			// Add current LE to an existing GE
+			if (pGESelected) {
+				// cout << "Add current LE to an existing GE ... "<< endl;
+				// Add LE.
+				pGESelected->addLE(*itLE);
+				// cout << "Flag to indicate that a local event has been
+				// added ... "<< endl;
+				// Flag to indicate that a local event has been added.
+				pGESelected->setNewLEStatus(true);
+				// cout << "reset age of the last local event received by
+				// the global event.... "<< endl;
+				// reset age of the last local event received by the global
 				// event.
-				if (!(*itGE)->getNewLEStatus()) {
-					// Increment its "Without any new local event age"
-					(*itGE)->setAgeLastElem((*itGE)->getAgeLastElem() + 1);
+				pGESelected->setAgeLastElem(0);
+			}
+			else {
+				// The current LE has not been linked. It became a new GE.
+				if (mListGlobalEvents.size() < mdtp.temporal.DET_GE_MAX) {
+					// cout << "Selecting last available color ... "<< endl;
+					Scalar geColor = Scalar(255, 255, 255); // availableGeColor.back();
+					// cout << "Deleting last available color ... "<< endl;
+					// availableGeColor.pop_back();
+					// cout << "Creating new GE ... "<< endl;
+					std::shared_ptr<GlobalEvent> newGE(std::make_shared<GlobalEvent>(c->mDate, c, currImg.rows, currImg.cols, geColor));
+					// cout << "Adding current LE ... "<< endl;
+					newGE->addLE(*itLE);
+					// cout << "Pushing new LE to GE list  ... "<< endl;
+					// Add the new globalEvent to the globalEvent's list
+					mListGlobalEvents.push_back(newGE);
+				}
+			}
+
+			itLE = listLocalEvents.erase(itLE); // Delete the current localEvent.
+		}
+
+		tStep3 = (double)getTickCount() - tStep3;
+
+		/// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+		/// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%% STEP 4 : MANAGE LIST GLOBAL EVENT %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+		/// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+		tStep4 = (double)getTickCount(); // Count process time of step 4.
+		bool saveSignal = false; // Returned signal to indicate to save a GE or not.
+
+		// Loop global event list to check their characteristics.
+		for (auto itGE = mListGlobalEvents.begin(); itGE != mListGlobalEvents.end();) {
+			(*itGE)->setAge((*itGE)->getAge() + 1); // Increment age.
+			// If the current global event has not received any new local
+			// event.
+			if (!(*itGE)->getNewLEStatus()) {
+				// Increment its "Without any new local event age"
+				(*itGE)->setAgeLastElem((*itGE)->getAgeLastElem() + 1);
+			}
+			else {
+				//(*itGE)->setNumLastFrame(c->mFrameNumber);
+				(*itGE)->AddFrame(c);
+				(*itGE)->setNewLEStatus(false);
+			}
+
+			// CASE 1 : FINISHED EVENT.
+			if ((*itGE)->getAgeLastElem() > 5) {
+				// Linear profil ? Minimum duration respected ?
+				if ((*itGE)->LEList.size() >= 5 && 
+					(*itGE)->continuousGoodPos(4) && 
+					(*itGE)->ratioFramesDist() && 
+					(*itGE)->negPosClusterFilter()) {
+					mGeToSave = itGE;
+					saveSignal = true;
+					break;
 				}
 				else {
-					//(*itGE)->setNumLastFrame(c->mFrameNumber);
-					(*itGE)->AddFrame(c);
-					(*itGE)->setNewLEStatus(false);
+					itGE = mListGlobalEvents.erase(itGE); // Delete the event.
+				}
+			}
+			// CASE 2 : NOT FINISHED EVENT.
+			else {
+				int nbsec = TimeDate::secBetweenTwoDates((*itGE)->getDate(), c->mDate);
+				bool maxtime = false;
+				if (nbsec > mdtp.DET_TIME_MAX)
+					maxtime = true;
+
+				// Check some characteristics : Too long event ? not linear ?
+				if ((!(*itGE)->getLinearStatus() && !(*itGE)->continuousGoodPos(5))) {
+					itGE = mListGlobalEvents.erase(itGE); // Delete the event.
+					continue;
 				}
 
-				string msgGe = "";
+				if ((!(*itGE)->getLinearStatus() && (*itGE)->continuousBadPos((int)(*itGE)->getAge() / 2))) {
+					itGE = mListGlobalEvents.erase(itGE); // Delete the event.
+					continue;
+				}
 
-				// CASE 1 : FINISHED EVENT.
-				if ((*itGE)->getAgeLastElem() > 5) {
-					// Linear profil ? Minimum duration respected ?
-					if ((*itGE)->LEList.size() >= 5 && (*itGE)->continuousGoodPos(4, msgGe) && (*itGE)->ratioFramesDist(msgGe) && (*itGE)->negPosClusterFilter(msgGe)) {
+				if (maxtime) {
+					logger->info("# GE deleted because max time reached - itGE->getDate() : {}",
+						TimeDate::getYYYYMMDDThhmmss((*itGE)->getDate()));
+					logger->info("- c.mDate : {}", TimeDate::getYYYYMMDDThhmmss(c->mDate));
+					logger->info("- difftime in sec : {}", nbsec);
+					logger->info("- maxtime in sec : {}", mdtp.DET_TIME_MAX);
+					itGE = mListGlobalEvents.erase(itGE); // Delete the event.
+					// Let the GE alive.
+				}
+				else if (c->mFrameRemaining < 10 && c->mFrameRemaining != 0) {
+					if ((*itGE)->LEList.size() >= 5 && 
+						(*itGE)->continuousGoodPos(4) && 
+						(*itGE)->ratioFramesDist() && 
+						(*itGE)->negPosClusterFilter()) {
 						mGeToSave = itGE;
 						saveSignal = true;
 						break;
 					}
 					else {
-						//auto first = (*itGE)->getNumFirstFrame();
-						//auto last = (*itGE)->getNumLastFrame();
 						itGE = mListGlobalEvents.erase(itGE); // Delete the event.
 					}
 				}
-				// CASE 2 : NOT FINISHED EVENT.
 				else {
-					int nbsec = TimeDate::secBetweenTwoDates((*itGE)->getDate(), c->mDate);
-					bool maxtime = false;
-					if (nbsec > mdtp.DET_TIME_MAX)
-						maxtime = true;
-
-					// Check some characteristics : Too long event ? not linear ?
-					if ((!(*itGE)->getLinearStatus() && !(*itGE)->continuousGoodPos(5, msgGe))) {
-						itGE = mListGlobalEvents.erase(itGE); // Delete the event.
-						continue;
-					}
-
-					if ((!(*itGE)->getLinearStatus() && (*itGE)->continuousBadPos((int)(*itGE)->getAge() / 2))) {
-						itGE = mListGlobalEvents.erase(itGE); // Delete the event.
-						continue;
-					}
-
-					if (maxtime) {
-						TimeDate::Date gedate = (*itGE)->getDate();
-						string m = "- itGE->getDate() : " + Conversion::numbering(4, gedate.year) + Conversion::intToString(gedate.year) + Conversion::numbering(2, gedate.month) + Conversion::intToString(gedate.month) + Conversion::numbering(2, gedate.day) + Conversion::intToString(gedate.day) + "T" + Conversion::numbering(2, gedate.hours) + Conversion::intToString(gedate.hours) + Conversion::numbering(2, gedate.minutes) + Conversion::intToString(gedate.minutes) + Conversion::numbering(2, gedate.seconds) + Conversion::intToString((int)gedate.seconds);
-						logger->info("# GE deleted because max time reached : {}", m);
-
-						m.clear();
-						m = Conversion::numbering(4, c->mDate.year) + Conversion::intToString(c->mDate.year) + Conversion::numbering(2, c->mDate.month) + Conversion::intToString(c->mDate.month) + Conversion::numbering(2, c->mDate.day) + Conversion::intToString(c->mDate.day) + "T" + Conversion::numbering(2, c->mDate.hours) + Conversion::intToString(c->mDate.hours) + Conversion::numbering(2, c->mDate.minutes) + Conversion::intToString(c->mDate.minutes) + Conversion::numbering(2, c->mDate.seconds) + Conversion::intToString((int)c->mDate.seconds);
-
-						logger->info("- c.mDate : {}", m);
-						logger->info("- difftime in sec : {}", nbsec);
-						logger->info("- maxtime in sec : {}", mdtp.DET_TIME_MAX);
-						itGE = mListGlobalEvents.erase(itGE); // Delete the event.
-						// Let the GE alive.
-					}
-					else if (c->mFrameRemaining < 10 && c->mFrameRemaining != 0) {
-						if ((*itGE)->LEList.size() >= 5 && (*itGE)->continuousGoodPos(4, msgGe) && (*itGE)->ratioFramesDist(msgGe) && (*itGE)->negPosClusterFilter(msgGe)) {
-							mGeToSave = itGE;
-							saveSignal = true;
-							break;
-						}
-						else {
-							itGE = mListGlobalEvents.erase(itGE); // Delete the event.
-						}
-					}
-					else {
-						++itGE; // Do nothing to the current GE, check the following one.
-					}
+					++itGE; // Do nothing to the current GE, check the following one.
 				}
 			}
+		}
 
-			tStep4 = (double)getTickCount() - tStep4;
-			tTotal = (double)getTickCount() - tTotal;
-			logger->debug("tt:{}ms,s1:{}ms,s2:{}ms,s3:{}ms,s4:{}ms",
-				tTotal * 1000 / getTickFrequency(),
-				tStep1 * 1000 / getTickFrequency(),
-				tStep2 * 1000 / getTickFrequency(),
-				tStep3 * 1000 / getTickFrequency(),
-				tStep4 * 1000 / getTickFrequency());
-			if (saveSignal) {
-				auto ret = *mGeToSave;
-				mListGlobalEvents.erase(mGeToSave);
-				return ret;
-			}
-			else {
-				return nullptr;
-			}
-			// The mask has been updated.
+		tStep4 = (double)getTickCount() - tStep4;
+		tTotal = (double)getTickCount() - tTotal;
+		double freq = getTickFrequency();
+		logger->debug("{},tt:{}ms,s1:{}ms,s2:{}ms,s3:{}ms,s4:{}ms", 
+			c->mFrameNumber,
+			tTotal * 1000 / freq,
+			tStep1 * 1000 / freq,
+			tStep2 * 1000 / freq,
+			tStep3 * 1000 / freq,
+			tStep4 * 1000 / freq);
+		if (saveSignal) {
+			auto ret = *mGeToSave;
+			mListGlobalEvents.erase(mGeToSave);
+			return ret;
 		}
 		else {
-			if (mdtp.DET_DEBUG_UPDATE_MASK) {
-				const ghc::filesystem::path p = ghc::filesystem::path(mdtp.DET_DEBUG_PATH + "/mask/");
-				if (!ghc::filesystem::exists(p))
-					ghc::filesystem::create_directories(p);
-				SaveImg::saveJPEG(Conversion::convertTo8UC1(currImg),
-					mdtp.DET_DEBUG_PATH + "/mask/umask_" + Conversion::numbering(10, c->mFrameNumber) + Conversion::intToString(c->mFrameNumber));
-			}
-
-			currImg.copyTo(mPrevFrame);
+			return nullptr;
 		}
 	}
 
 	return nullptr;
 }
 
-vector<Scalar> DetectionTemporal::getColorInEventMap(Mat& eventMap,
-	Point roiCenter)
+vector<Scalar> DetectionTemporal::getColorInEventMap(Mat& eventMap, Point roiCenter)
 {
 	// ROI in the eventMap.
 	Mat roi;
 
 	// ROI extraction from the eventmap.
-	eventMap(Rect(roiCenter.x - mRoiSize[0] / 2, roiCenter.y - mRoiSize[1] / 2,
-		mRoiSize[0], mRoiSize[1]))
+	eventMap(Rect(roiCenter.x - mRoiSize[0] / 2, roiCenter.y - mRoiSize[1] / 2, mRoiSize[0], mRoiSize[1]))
 		.copyTo(roi);
 
 	unsigned char* ptr = (unsigned char*)roi.data;
-
 	int cn = roi.channels();
-
 	vector<Scalar> listColor;
-
 	bool exist = false;
 
 	for (int i = 0; i < roi.rows; i++) {
@@ -845,7 +806,7 @@ void DetectionTemporal::analyseRegion(
 	int posDiffThreshold, Mat& negDiff, int negDiffThreshold,
 	list<std::shared_ptr<LocalEvent>>& listLE,
 	Point subdivisionPos, // Origin position of a region in frame (corner top left)
-	int maxNbLE, int numFrame, string& msg, TimeDate::Date cFrameDate)
+	int maxNbLE, int numFrame, TimeDate::Date cFrameDate)
 {
 	int situation = 0;
 	int nbCreatedLE = 0;
@@ -867,9 +828,10 @@ void DetectionTemporal::analyseRegion(
 			if ((int)ptr[j] > 0) {
 				// Check if we are not out of frame range when a ROI is defined
 				// at the current pixel location.
-				if ((subdivisionPos.y + i - mRoiSize[1] / 2 > 0) && (subdivisionPos.y + i + mRoiSize[1] / 2 < absDiffBinaryMap.rows) && (subdivisionPos.x + j - mRoiSize[0] / 2 > 0) && (subdivisionPos.x + j + mRoiSize[0] / 2 < absDiffBinaryMap.cols)) {
-					msg = msg + "Analyse ROI (" + Conversion::intToString(subdivisionPos.x + j) + ";" + Conversion::intToString(subdivisionPos.y + i) + ")\n";
-
+				if ((subdivisionPos.y + i - mRoiSize[1] / 2 > 0) && 
+					(subdivisionPos.y + i + mRoiSize[1] / 2 < absDiffBinaryMap.rows) && 
+					(subdivisionPos.x + j - mRoiSize[0] / 2 > 0) && 
+					(subdivisionPos.x + j + mRoiSize[0] / 2 < absDiffBinaryMap.cols)) {
 					nbROI++;
 					roicounter++;
 					// Get colors in eventMap at the current ROI location.
@@ -884,11 +846,8 @@ void DetectionTemporal::analyseRegion(
 
 					switch (situation) {
 					case 0:
-
 					{
 						if (listLE.size() < maxNbLE) {
-							msg = msg + "->CREATE New Local EVENT\n" + "  - Initial position : (" + Conversion::intToString(subdivisionPos.x + j) + ";" + Conversion::intToString(subdivisionPos.y + i) + ")\n" + "  - Color : (" + Conversion::intToString(mListColors.at(listLE.size())[0]) + ";" + Conversion::intToString(mListColors.at(listLE.size())[1]) + ";" + Conversion::intToString(mListColors.at(listLE.size())[2]) + ")\n";
-
 							// Create new localEvent object.
 							std::shared_ptr<LocalEvent> newLocalEvent(std::make_shared<LocalEvent>(
 								mListColors.at(listLE.size()),
@@ -950,17 +909,12 @@ void DetectionTemporal::analyseRegion(
 								}
 							}
 
-							msg = msg + "Number white pix in abs diff : " + Conversion::intToString(whitePixAbsDiff.size()) + "\n";
-							msg = msg + "Number white pix in pos diff : " + Conversion::intToString(whitePixPosDiff.size()) + "\n";
-							msg = msg + "Number white pix in neg diff : " + Conversion::intToString(whitePixNegDiff.size()) + "\n";
-
 							newLocalEvent->addAbs(whitePixAbsDiff);
 							newLocalEvent->addPos(whitePixPosDiff);
 							newLocalEvent->addNeg(whitePixNegDiff);
 
 							// Update center of mass.
 							newLocalEvent->computeMassCenter();
-							msg = msg + "  - Center of mass abs pixels : (" + Conversion::intToString(newLocalEvent->getMassCenter().x) + ";" + Conversion::intToString(newLocalEvent->getMassCenter().y) + ")\n";
 
 							// Save the frame number where the local event
 							// has been created.
@@ -998,8 +952,6 @@ void DetectionTemporal::analyseRegion(
 							// Try to find a local event which has the same
 							// color.
 							if ((*it)->getColor() == listColorInRoi.at(0)) {
-								msg = msg + "->Attach ROI (" + Conversion::intToString(subdivisionPos.x + j) + ";" + Conversion::intToString(subdivisionPos.y + i) + ") with LE " + Conversion::intToString(index) + "\n";
-
 								// Extract white pixels in ROI.
 								vector<Point> whitePixAbsDiff, whitePixPosDiff, whitePixNegDiff;
 								Mat roiAbsDiff, roiPosDiff, roiNegDiff;
@@ -1052,10 +1004,6 @@ void DetectionTemporal::analyseRegion(
 									}
 								}
 
-								msg = msg + "Number white pix in abs diff : " + Conversion::intToString(whitePixAbsDiff.size()) + "\n";
-								msg = msg + "Number white pix in pos diff : " + Conversion::intToString(whitePixPosDiff.size()) + "\n";
-								msg = msg + "Number white pix in neg diff : " + Conversion::intToString(whitePixNegDiff.size()) + "\n";
-
 								(*it)->addAbs(whitePixAbsDiff);
 								(*it)->addPos(whitePixPosDiff);
 								(*it)->addNeg(whitePixNegDiff);
@@ -1066,9 +1014,6 @@ void DetectionTemporal::analyseRegion(
 								(*it)->setMap(Point(subdivisionPos.x + j - mRoiSize[0] / 2, subdivisionPos.y + i - mRoiSize[1] / 2), mRoiSize[1], mRoiSize[0]);
 								// Update center of mass
 								(*it)->computeMassCenter();
-								msg = msg + "  - Update Center of mass abs "
-									"pixels of LE "
-									+ Conversion::intToString(index) + " : (" + Conversion::intToString((*it)->getMassCenter().x) + ";" + Conversion::intToString((*it)->getMassCenter().y) + ")\n";
 
 								// Update eventMap with the color of the new
 								// localEvent
@@ -1185,6 +1130,4 @@ void DetectionTemporal::analyseRegion(
 			}
 		}
 	}
-
-	msg = msg + "--> RESUME REGION ANALYSE : \n" + "Number of analysed ROI : " + Conversion::intToString(nbROI) + "\n" + "Number of not analysed ROI : " + Conversion::intToString(nbRoiNotAnalysed) + "\n" + "Number of new LE : " + Conversion::intToString(nbCreatedLE) + "\n" + "Number of updated LE :" + Conversion::intToString(nbRoiAttachedToLE) + "\n";
 }

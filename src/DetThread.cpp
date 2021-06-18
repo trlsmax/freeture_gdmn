@@ -35,14 +35,14 @@
  */
 
 #include "DetThread.h"
+#include <list>
 #include <spdlog/spdlog.h>
+#include <opencv2/opencv.hpp>
 using namespace cv;
 
-DetThread::DetThread(circular_buffer<std::shared_ptr<Frame>>* fb, mutex* fb_m,
-	condition_variable* fb_c, bool* dSignal,
-	mutex* dSignal_m,
-	condition_variable* dSignal_c, detectionParam dtp,
-	dataParam dp, mailParam mp, stationParam sp,
+DetThread::DetThread(CDoubleLinkedList<std::shared_ptr<Frame>>* fb, mutex* fb_m, condition_variable* fb_c, 
+	bool* dSignal, mutex* dSignal_m, condition_variable* dSignal_c, 
+	detectionParam dtp, dataParam dp, mailParam mp, stationParam sp,
 	fitskeysParam fkp, CamPixFmt pfmt)
 	:
 
@@ -141,6 +141,7 @@ void DetThread::run()
 	bool stopThread = false;
 	mIsRunning = true;
 	bool eventToComplete = false;
+	auto currentFrame = frameBuffer->end();
 	std::list<std::pair<std::shared_ptr<GlobalEvent>, time_point<system_clock, std::chrono::seconds>>> listGlobalEvent;
 	// Flag to indicate that an event must be complete with more frames.
 	// Reference date to count time to complete an event.
@@ -173,70 +174,87 @@ void DetThread::run()
 
 				if (!mForceToReset) {
 					// Fetch the last grabbed frame.
-					std::shared_ptr<Frame> lastFrame;
+                    std::list<std::shared_ptr<Frame>> frames;
 					std::unique_lock<std::mutex> lock2(*frameBuffer_mutex);
-					if (frameBuffer->size() > 2)
-						lastFrame = frameBuffer->back();
-					lock2.unlock();
-
-					double t = (double)getTickCount();
-					if (lastFrame && lastFrame->mImg.data) {
-						mFormat = lastFrame->mFormat;
-						// Run detection process.
-						std::shared_ptr<GlobalEvent> ret = pDetMthd->runDetection(lastFrame);
-						if (ret) {
-							listGlobalEvent.emplace_back(ret, time_point_cast<std::chrono::seconds>(system_clock::now()));
-							logger->info( "Event detected ! Waiting frames to complete the event...");
-							mNbDetection++;
+					if (!frameBuffer->empty()) {
+						if (currentFrame == frameBuffer->end()) {
+							currentFrame = frameBuffer->begin();
 						}
-
-						if (!listGlobalEvent.empty()) {
-							time_point<system_clock, std::chrono::seconds> nowTimeSec = time_point_cast<std::chrono::seconds>(system_clock::now());
-							for (auto itr = listGlobalEvent.begin(); itr != listGlobalEvent.end();) {
-								itr->first->AddFrame(lastFrame, false);
-								auto d = nowTimeSec - itr->second;
-								long secTime = d.count();
-								if (secTime > mdtp.DET_TIME_AROUND) {
-									logger->info("Event completed.");
-									// Build event directory.
-									mEventDate = itr->first->getDate();
-
-									if (buildEventDataDirectory())
-										logger->info("Success to build event directory.");
-									else
-										logger->error("Fail to build event directory.");
-
-									// Save event.
-									logger->info("Saving event...");
-									string eventBase = mstp.TELESCOP + "_" + TimeDate::getYYYY_MM_DD_hhmmss(mEventDate);
-									std::unique_lock<std::mutex> lock3(*frameBuffer_mutex);
-									itr->first->GetFramesBeforeEvent(frameBuffer);
-									lock3.unlock();
-									pDetMthd->saveDetectionInfos(itr->first.get(), mEventPath + eventBase);
-									if (!saveEventData(itr->first.get()))
-										logger->critical("Error saving event data.");
-									else
-										logger->info("Success to save event !");
-									itr = listGlobalEvent.erase(itr);
-
-									// Reset detection.
-									logger->info("Reset detection process.");
-									pDetMthd->resetDetection(false);
-								}
-								else {
-									itr++;
-								}
+						while (currentFrame != frameBuffer->end()) {
+							if (currentFrame.node()->valid) {
+								frames.push_back(currentFrame.Value());
+								currentFrame.node()->valid = false;
+							}
+							if (currentFrame.node()->pNext == nullptr) {
+								break;
+							} else {
+								++currentFrame;
 							}
 						}
 					}
+					lock2.unlock();
 
-					t = (((double)getTickCount() - t) / getTickFrequency()) * 1000;
-					// cout <<"\033[11;0H" << " [ TIME DET ] : " <<
-					// std::setprecision(3) << std::fixed << t << " ms " << endl;
-					if (printFrameStats) {
-						spdlog::debug(" [ TIME DET ] : {} ms", t);
-					}
-					logger->debug(" [ TIME DET ] : {} ms", t);
+                    for (auto& lastFrame : frames) {
+                        double t = (double)getTickCount();
+                        if (lastFrame && lastFrame->mImg.data) {
+                            mFormat = lastFrame->mFormat;
+                            // Run detection process.
+                            std::shared_ptr<GlobalEvent> ret = pDetMthd->runDetection(lastFrame);
+                            if (ret) {
+                                listGlobalEvent.emplace_back(ret, time_point_cast<std::chrono::seconds>(system_clock::now()));
+                                //logger->info( "Event detected ! Waiting frames to complete the event...");
+                                spdlog::info( "Event detected ! Waiting frames to complete the event...");
+                                mNbDetection++;
+                            }
+
+                            if (!listGlobalEvent.empty()) {
+                                time_point<system_clock, std::chrono::seconds> nowTimeSec = time_point_cast<std::chrono::seconds>(system_clock::now());
+                                for (auto itr = listGlobalEvent.begin(); itr != listGlobalEvent.end();) {
+                                    itr->first->AddFrame(lastFrame, false);
+                                    if (true/*(nowTimeSec - itr->second).count() > mdtp.DET_TIME_AROUND*/) {
+                                        //logger->info("Event completed.");
+                                        spdlog::info("Event completed.");
+                                        // Build event directory.
+                                        mEventDate = itr->first->getDate();
+
+                                        if (buildEventDataDirectory())
+                                            logger->info("Success to build event directory.");
+                                        else
+                                            logger->error("Fail to build event directory.");
+
+                                        // Save event.
+                                        logger->info("Saving event...");
+                                        string eventBase = mstp.TELESCOP + "_" + TimeDate::getYYYY_MM_DD_hhmmss(mEventDate);
+                                        std::unique_lock<std::mutex> lock3(*frameBuffer_mutex);
+                                        itr->first->GetFramesBeforeEvent(frameBuffer);
+                                        pDetMthd->saveDetectionInfos(itr->first.get(), mEventPath + eventBase);
+                                        lock3.unlock();
+                                        if (!saveEventData(itr->first.get()))
+                                            spdlog::info("Error saving event data.");
+                                        else
+                                            spdlog::info("Success to save event !");
+                                        itr = listGlobalEvent.erase(itr);
+
+                                        // Reset detection.
+                                        logger->info("Reset detection process.");
+                                        pDetMthd->resetDetection(false);
+                                    }
+                                    else {
+                                        itr++;
+                                    }
+                                }
+                            }
+                        }
+
+                        t = (((double)getTickCount() - t) / getTickFrequency()) * 1000;
+                        // cout <<"\033[11;0H" << " [ TIME DET ] : " <<
+                        // std::setprecision(3) << std::fixed << t << " ms " << endl;
+                        if (printFrameStats) {
+                            spdlog::debug(" [ TIME DET ] : {} ms", t);
+                        }
+                        logger->debug(" [ TIME DET ] : {} ms", t);
+                    }
+                    frames.clear();
 				}
 				else {
 					// reset method
@@ -253,7 +271,7 @@ void DetThread::run()
 			}
 			catch (std::exception& e) {
 				listGlobalEvent.clear();
-				logger->critical(e.what());
+                logger->critical(e.what());
 			}
 
 			mMustStopMutex.lock();
@@ -448,11 +466,7 @@ bool DetThread::buildEventDataDirectory()
 
 bool DetThread::saveEventData(GlobalEvent* ge)
 {
-	namespace fs = ghc::filesystem;
 	auto logger = spdlog::get("det_logger");
-
-	// List of data path to attach to the mail notification.
-	vector<string> mailAttachments;
 
 	string eventBase = mstp.TELESCOP + "_" + TimeDate::getYYYY_MM_DD_hhmmss(mEventDate);
 
@@ -465,14 +479,14 @@ bool DetThread::saveEventData(GlobalEvent* ge)
 		++nbDigitOnNbTotalFramesToSave;
 	}
 
-	logger->info("> First frame to save  : {}", ge->Frames().front()->mFrameNumber);
-	logger->info("> Lst frame to save    : {}", ge->Frames().back()->mFrameNumber);
-	logger->info("> First event frame    : {}", ge->FirstEventFrameNbr());
-	logger->info("> Last event frame     : {}", ge->LastEventFrameNbr());
-	logger->info("> Frames before        : {}", ge->FramesAround());
-	logger->info("> Frames after         : {}", ge->FramesAround());
-	logger->info("> Total frames to save : {}", ge->Frames().size());
-	logger->info("> Total digit          : {}", nbDigitOnNbTotalFramesToSave);
+    spdlog::info("> First frame to save  : {}", ge->Frames().front()->mFrameNumber);
+	spdlog::info("> Lst frame to save    : {}", ge->Frames().back()->mFrameNumber);
+	spdlog::info("> First event frame    : {}", ge->FirstEventFrameNbr());
+	spdlog::info("> Last event frame     : {}", ge->LastEventFrameNbr());
+	spdlog::info("> Frames before        : {}", ge->FramesAround());
+	spdlog::info("> Frames after         : {}", ge->FramesAround());
+	spdlog::info("> Total frames to save : {}", ge->Frames().size());
+	spdlog::info("> Total digit          : {}", nbDigitOnNbTotalFramesToSave);
 
 	// Init video avi
 	VideoWriter* video = NULL;
@@ -492,11 +506,10 @@ bool DetThread::saveEventData(GlobalEvent* ge)
 	Stack stack = Stack(mdp.FITS_COMPRESSION_METHOD, mfkp, mstp);
 
 	// Loop framebuffer.
-	circular_buffer<Frame>::iterator it;
-	for (auto& frame : ge->Frames()) {
+	for (auto frame : ge->Frames()) {
 		if (mdtp.DET_SAVE_AVI) {
 			if (video->isOpened()) {
-				if (it->mImg.type() != CV_8UC1) {
+				if (frame->mImg.type() != CV_8UC1) {
 					Mat iv = Conversion::convertTo8UC1(frame->mImg);
 					video->write(iv);
 				}

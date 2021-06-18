@@ -40,7 +40,7 @@
 #include <iterator>
 #include <algorithm>
 #include <opencv2/imgproc/imgproc.hpp>
-#include <circular_buffer/circular_buffer.hpp>
+#include "double_linked_list.h"
 #include "Frame.h"
 #include "LocalEvent.h"
 #include "SaveImg.h"
@@ -48,7 +48,6 @@
 #include "SParam.h"
 
 using namespace std;
-using namespace cb;
 
 class GlobalEvent {
 
@@ -115,16 +114,20 @@ public:
 	void setMapEvent(cv::Mat m) { m.copyTo(geMap); };
 	void setNewLEStatus(bool s) { newLeAdded = s; };
 
-	bool ratioFramesDist(string& msg);
+	bool ratioFramesDist();
 
 	bool addLE(std::shared_ptr<LocalEvent> le);
-	bool continuousGoodPos(int n, string& msg);
+	bool continuousGoodPos(int n);
 	bool continuousBadPos(int n);
-	bool negPosClusterFilter(string& msg);
+	bool negPosClusterFilter();
 	std::list<std::shared_ptr<Frame>>& Frames(void) { return frames; }
 	void AddFrameBefore(std::shared_ptr<Frame> frame) { frames.push_front(frame); }
 	void AddFrame(std::shared_ptr<Frame> frame, bool updateLstFrameNbr = true) 
 	{ 
+		if (frames.empty() || frame == frames.back()) {
+			return;
+		}
+
 		frames.push_back(frame); 
 		if (updateLstFrameNbr)
 			lastEventFrameNbr = frame->mFrameNumber;
@@ -135,5 +138,5 @@ public:
 	int FramesAround(void) { return nbFramesAround; }
 	int FirstEventFrameNbr(void) { return firstEventFrameNbr; }
 	int LastEventFrameNbr(void) { return lastEventFrameNbr; }
-	void GetFramesBeforeEvent(circular_buffer<std::shared_ptr<Frame>>* buffer);
+	void GetFramesBeforeEvent(CDoubleLinkedList<std::shared_ptr<Frame>>* buffer);
 };

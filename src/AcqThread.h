@@ -37,12 +37,12 @@
 #ifndef ACQTHREAD_H
 #define ACQTHREAD_H
 
-#include <circular_buffer/circular_buffer.hpp>
 #include <condition_variable>
 #include <filesystem.hpp>
 #include <mutex>
 #include <thread>
 
+#include "double_linked_list.h"
 #include "DataPaths.h"
 #include "DetThread.h"
 #include "Device.h"
@@ -56,7 +56,6 @@
 
 using namespace std;
 using namespace ghc;
-using namespace cb;
 
 class AcqThread {
 private:
@@ -95,7 +94,7 @@ private:
     // Communication with the shared framebuffer.
     condition_variable* frameBuffer_condition;
     mutex* frameBuffer_mutex;
-    circular_buffer<std::shared_ptr<Frame>>* frameBuffer;
+    CDoubleLinkedList<std::shared_ptr<Frame>>* frameBuffer;
 
     // Communication with StackThread.
     bool* detSignal;
@@ -105,7 +104,7 @@ private:
     bool printFrameStats;
 
 public:
-    AcqThread(circular_buffer<std::shared_ptr<Frame>>* fb, mutex* fb_m,
+    AcqThread(CDoubleLinkedList<std::shared_ptr<Frame>>* fb, mutex* fb_m,
         condition_variable* fb_c, bool* dSignal, mutex* dSignal_m,
         condition_variable* dSignal_c, DetThread* detection,
         int cid, dataParam dp, stationParam stp, detectionParam dtp, cameraParam acq,

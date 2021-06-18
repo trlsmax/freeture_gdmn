@@ -52,6 +52,8 @@ GlobalEvent::GlobalEvent(TimeDate::Date frameDate, std::shared_ptr<Frame> curren
 	geColor = c;
 	geDir = Point(0, 0);
 	frames.push_back(currentFrame);
+    firstEventFrameNbr = currentFrame->mFrameNumber;
+    nbFramesAround = 0;
 }
 
 GlobalEvent::~GlobalEvent()
@@ -211,12 +213,10 @@ bool GlobalEvent::addLE(std::shared_ptr<LocalEvent> le)
 	return true;
 }
 
-bool GlobalEvent::continuousGoodPos(int n, string& msg)
+bool GlobalEvent::continuousGoodPos(int n)
 {
-	msg += "continuousGoodPos\n";
 	int nb = 0;
 	int nn = 0;
-	msg += "size pts validity : " + Conversion::intToString(ptsValidity.size()) + " \n";
 
 	for (auto ok : ptsValidity) {
 		if (ok) {
@@ -224,7 +224,6 @@ bool GlobalEvent::continuousGoodPos(int n, string& msg)
 			nn = 0;
 
 			if (nb >= n) {
-				msg += "continuousGoodPos " + Conversion::intToString(n) + " = OK\n";
 				return true;
 			}
 		}
@@ -233,7 +232,6 @@ bool GlobalEvent::continuousGoodPos(int n, string& msg)
 			nb = 0;
 
 			if (nn == 2) {
-				msg += "continuousGoodPos " + Conversion::intToString(n) + " = NOT OK\n";
 				return false;
 			}
 		}
@@ -269,52 +267,38 @@ bool GlobalEvent::continuousBadPos(int n)
 	return false;
 }
 
-bool GlobalEvent::negPosClusterFilter(string& msg) 
+bool GlobalEvent::negPosClusterFilter() 
 {
-	msg += "negPosClusterFilter\n";
 	float counter = 0;
-	msg += "clusterNegPos size = " + Conversion::intToString(clusterNegPos.size()) + " \n";
 	for (auto ok : clusterNegPos) {
 		if (ok) {
-			msg += "clusterNegPos true\n";
 			counter += 1.0;
-		}
-		else {
-			msg += "clusterNegPos false\n";
-
 		}
 	}
 
 	if (counter >= (float)clusterNegPos.size() / 2.0 && counter != 0) {
-		msg += "negPosClusterFilter = OK\n";
 		return true;
 	}
 	else {
-		msg += "negPosClusterFilter = NOT OK\n";
 		return false;
 	}
 }
 
-bool GlobalEvent::ratioFramesDist(string& msg) 
+bool GlobalEvent::ratioFramesDist() 
 {
-	msg += "ratioFramesDist\n";
 	float d = sqrt(pow(mainPts.back().x - mainPts.front().x, 2.0) + pow(mainPts.back().y - mainPts.front().y, 2.0));
-	msg += "d = " + Conversion::floatToString(d) + " \n";
 	int n = frames.size();
-	msg += "n = " + Conversion::intToString(n) + " \n";
 
 	if (d > (n * 0.333)) {
-		msg += "ratio = ok\n";
 		return true;
 	}
 	else {
-		msg += "ratio = not ok\n";
 		return false;
 	}
 }
 
 
-void GlobalEvent::GetFramesBeforeEvent(circular_buffer<std::shared_ptr<Frame>>* buffer)
+void GlobalEvent::GetFramesBeforeEvent(CDoubleLinkedList<std::shared_ptr<Frame>>* buffer)
 {
 	if (!buffer) {
 		return;
@@ -322,9 +306,9 @@ void GlobalEvent::GetFramesBeforeEvent(circular_buffer<std::shared_ptr<Frame>>* 
 
 	int begin = firstEventFrameNbr - nbFramesAround;
 	std::list<std::shared_ptr<Frame>> tmp;
-	for (auto itr = buffer->begin(); itr != buffer->end(); itr++) {
-		if ((*itr)->mFrameNumber >= begin && (*itr)->mFrameNumber < firstEventFrameNbr) {
-			tmp.push_back(*itr);
+	for (auto itr = buffer->begin(); itr != buffer->end(); ++itr) {
+		if (itr.Value()->mFrameNumber >= begin && itr.Value()->mFrameNumber < firstEventFrameNbr) {
+			tmp.push_back(itr.Value());
 		}
 	}
 

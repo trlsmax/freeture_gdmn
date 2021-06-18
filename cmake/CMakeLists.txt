@@ -150,19 +150,19 @@ ELSE(${OperatingSystem} MATCHES "Windows")
 	IF(${OperatingSystem} MATCHES "Linux")
 
     # CFITSIO.
-    message("> Searching cfitsio...")
-    find_package(CFITSIO)
+    #message("> Searching cfitsio...")
+    #find_package(CFITSIO)
 
-    if(CFITSIO_FOUND)
-       message("> Success to find cfitsio.")
-       link_directories(${CFITSIO_LIBRARY_DIRS})
-       message("CFITSIO_INCLUDE_DIR : " ${CFITSIO_INCLUDE_DIR} )
-       message("CFITSIO_LIBRARIES : " ${CFITSIO_LIBRARIES} )
-       include_directories(${CFITSIO_INCLUDE_DIR})
-       target_link_libraries( ${EXE_NAME} ${CFITSIO_LIBRARIES} )
-    else(NOT CFITSIO_FOUND)
-       message("> Fail to find cfitsio.")
-    endif(CFITSIO_FOUND)
+    #if(CFITSIO_FOUND)
+    #   message("> Success to find cfitsio.")
+    #   link_directories(${CFITSIO_LIBRARY_DIRS})
+    #   message("CFITSIO_INCLUDE_DIR : " ${CFITSIO_INCLUDE_DIR} )
+    #   message("CFITSIO_LIBRARIES : " ${CFITSIO_LIBRARIES} )
+    #   include_directories(${CFITSIO_INCLUDE_DIR})
+    #   target_link_libraries( ${EXE_NAME} ${CFITSIO_LIBRARIES} )
+    #else(NOT CFITSIO_FOUND)
+    #   message("> Fail to find cfitsio.")
+    #endif(CFITSIO_FOUND)
 
 
 	# Not include Pylon for Basler Cameras on Windows.

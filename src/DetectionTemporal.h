@@ -36,7 +36,6 @@
 #pragma once
 
 #include <algorithm>
-#include <circular_buffer/circular_buffer.hpp>
 #include <filesystem.hpp>
 #include <iterator>
 #include <opencv2/imgproc/imgproc.hpp>
@@ -54,14 +53,12 @@
 #include "GlobalEvent.h"
 #include "ImgProcessing.h"
 #include "LocalEvent.h"
-#include "Mask.h"
 #include "SaveImg.h"
 #include "TimeDate.h"
 #include "config.h"
 
 using namespace ghc::filesystem;
 using namespace std;
-using namespace cb;
 
 class DetectionTemporal : public Detection {
 private:
@@ -75,11 +72,10 @@ private:
     int mRoiSize[2];
     int mImgNum;     // Current frame number.
     cv::Mat mPrevFrame;  // Previous frame.
-    cv::Mat mStaticMask;
+    cv::Mat mMask;
     string mDebugCurrentPath;
     int mDataSetCounter;
     bool mDebugUpdateMask;
-    Mask *mMaskManager;
     vector<string> debugFiles;
     detectionParam mdtp;
     cv::VideoWriter mVideoDebugAutoMask;
@@ -89,8 +85,6 @@ public:
 
     ~DetectionTemporal();
 
-    void setMaskFrameStats(bool frameStats);
-
     void initMethod(string cfgPath);
 
     std::shared_ptr<GlobalEvent> runDetection(std::shared_ptr<Frame> c);
@@ -98,8 +92,6 @@ public:
     void saveDetectionInfos(GlobalEvent* ge, string path);
 
     void resetDetection(bool loadNewDataSet);
-
-    void resetMask();
 
 
     TimeDate::Date getEventDate() { return (*mGeToSave)->getDate(); };
@@ -119,6 +111,6 @@ private:
                        cv::Mat &posDiff, int posDiffThreshold, cv::Mat &negDiff,
                        int negDiffThreshold, list<std::shared_ptr<LocalEvent>> &listLE,
                        cv::Point subdivisionPos, int maxNbLE, int numFrame,
-                       string &msg, TimeDate::Date cFrameDate);
+                       TimeDate::Date cFrameDate);
 };
 

@@ -59,13 +59,11 @@
 #include <filesystem.hpp>
 #include <iterator>
 #include <algorithm>
-#include <circular_buffer/circular_buffer.hpp>
 #include "EInputDeviceType.h"
 #include "ECamSdkType.h"
 #include "SParam.h"
 
 using namespace ghc::filesystem;
-using namespace cb;
 using namespace std;
 
 class Device {

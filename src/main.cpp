@@ -56,7 +56,6 @@
 #include <spdlog/sinks/daily_file_sink.h>
 #include <spdlog/spdlog.h>
 
-#include <circular_buffer/circular_buffer.hpp>
 #include <filesystem.hpp>
 #include <cstdio>
 #include <cxxopts/cxxopts.hpp>
@@ -65,6 +64,7 @@
 #include <opencv2/imgproc/imgproc.hpp>
 #include <string>
 
+#include "double_linked_list.h"
 #include "AcqThread.h"
 #include "CfgParam.h"
 #include "Conversion.h"
@@ -79,7 +79,6 @@
 
 #define BOOST_NO_SCOPED_ENUMS
 using namespace std;
-using namespace cb;
 using namespace cv;
 using namespace ghc;
 
@@ -518,8 +517,7 @@ int main(int argc, const char** argv)
                     /// ------------------------------------------------------------------
 
                     // Circular buffer to store last n grabbed frames.
-                    circular_buffer<std::shared_ptr<Frame>> frameBuffer(
-                        cfg.getDetParam().ACQ_BUFFER_SIZE * cfg.getCamParam().ACQ_FPS);
+                    CDoubleLinkedList<std::shared_ptr<Frame>> frameBuffer;
                     mutex frameBuffer_m;
                     condition_variable frameBuffer_c;
 

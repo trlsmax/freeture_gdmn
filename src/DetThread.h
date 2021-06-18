@@ -39,11 +39,10 @@
 #include <condition_variable>
 #include <mutex>
 #include <thread>
-#include <circular_buffer/circular_buffer.hpp>
 #include <filesystem.hpp>
 #include <iterator>
-#include <utility>
 
+#include "double_linked_list.h"
 #include "DataPaths.h"
 #include "Detection.h"
 #include "DetectionTemplate.h"
@@ -55,7 +54,6 @@
 #include "Stack.h"
 #include "TimeDate.h"
 
-using namespace cb;
 using namespace ghc;
 using namespace std;
 
@@ -79,7 +77,7 @@ private:
     int mNbDetection; // Number of detection.
     bool mInterruptionStatus;
     mutex mInterruptionStatusMutex;
-    circular_buffer<std::shared_ptr<Frame>>* frameBuffer;
+    CDoubleLinkedList<std::shared_ptr<Frame>>* frameBuffer;
     mutex* frameBuffer_mutex;
     condition_variable* frameBuffer_condition;
     bool* detSignal;
@@ -98,7 +96,7 @@ private:
     bool printFrameStats;
 
 public:
-    DetThread(circular_buffer<std::shared_ptr<Frame>>* fb,
+    DetThread(CDoubleLinkedList<std::shared_ptr<Frame>>* fb,
         mutex* fb_m,
         condition_variable* fb_c,
         bool* dSignal,

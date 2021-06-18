@@ -36,7 +36,6 @@
 
 #include "config.h"
 
-#include <circular_buffer/circular_buffer.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/video/tracking.hpp>
 #include "ELogSeverityLevel.h"
@@ -55,11 +54,9 @@
 #include <algorithm>
 #include <filesystem.hpp>
 #include "ImgProcessing.h"
-#include "Mask.h"
 
 using namespace ghc::filesystem;
 using namespace std;
-using namespace cb;
 
 class DetectionTemplate : public Detection {
 
@@ -69,7 +66,6 @@ class DetectionTemplate : public Detection {
         cv::Mat                 mMask;                  // Mask applied to frames.
         int                 mDataSetCounter;
         detectionParam      mdtp;
-        Mask                *mMaskControl;
 
 
     public :
@@ -78,8 +74,6 @@ class DetectionTemplate : public Detection {
 
         ~DetectionTemplate();
 
-	void setMaskFrameStats( bool frameStats );
-
         void initMethod(string cfgPath);
 
         bool runDetection(Frame &c);
@@ -87,8 +81,6 @@ class DetectionTemplate : public Detection {
         void saveDetectionInfos(string p, int nbFramesAround);
 
         void resetDetection(bool loadNewDataSet);
-
-        void resetMask();
 
         int getEventFirstFrameNb();
 

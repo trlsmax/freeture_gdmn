@@ -38,10 +38,11 @@
 #include "AcqThread.h"
 #include <chrono>
 #include <spdlog/spdlog.h>
-using namespace std::chrono;
+#include <opencv2/opencv.hpp>
 using namespace cv;
+using namespace std::chrono;
 
-AcqThread::AcqThread(circular_buffer<std::shared_ptr<Frame>>* fb,
+AcqThread::AcqThread(CDoubleLinkedList<std::shared_ptr<Frame>>* fb,
     mutex* fb_m,
     condition_variable* fb_c,
     bool* dSignal,
@@ -148,10 +149,6 @@ void AcqThread::run()
     logger->info("==============================================");
 
     try {
-        // Search next acquisition according to the current time.
-        selectNextAcquisitionSchedule(
-            TimeDate::splitIsoExtendedDate(TimeDate::IsoExtendedStringNow()));
-
         // Exposure adjustment variables.
         bool exposureControlStatus = false;
         bool exposureControlActive = false;
@@ -195,15 +192,18 @@ void AcqThread::run()
                 // Grab a frame.
                 if (mDevice->runContinuousCapture(*newFrame)) {
                     logger->debug("============= FRAME {} =============", newFrame->mFrameNumber);
-                    if (printFrameStats) {
-                        spdlog::debug("============= FRAME {} =============", newFrame->mFrameNumber);
-                    }
+                    //if (printFrameStats) {
+                    //    spdlog::debug("============= FRAME {} =============", newFrame->mFrameNumber);
+                    //}
 
                     // If camera type in input is FRAMES or VIDEO.
                     if (mDevice->mVideoFramesInput) {
                         // Push the new frame in the framebuffer.
                         std::unique_lock<std::mutex> lock(*frameBuffer_mutex);
                         frameBuffer->push_back(newFrame);
+                        if (frameBuffer->size() > 100) {
+                            frameBuffer->pop_front();
+                        }
                         lock.unlock();
 
                         // Notify detection thread.
@@ -224,9 +224,7 @@ void AcqThread::run()
 #ifdef WINDOWS
                         Sleep(twait);
 #else
-#ifdef LINUX
                         usleep(twait * 1000);
-#endif
 #endif
 
                     } else {
@@ -246,9 +244,11 @@ void AcqThread::run()
                         // be shared with others threads.
                         if (!exposureControlStatus) {
                             // Push the new frame in the framebuffer.
-                            std::unique_lock<std::mutex> lock(
-                                *frameBuffer_mutex);
+                            std::unique_lock<std::mutex> lock(*frameBuffer_mutex);
                             frameBuffer->push_back(newFrame);
+                            if (frameBuffer->size() > 100) {
+                                frameBuffer->pop_front();
+                            }
                             lock.unlock();
 
                             // Notify detection thread.
@@ -313,102 +313,9 @@ void AcqThread::run()
                             computeSunTimes();
                         }
 
-                        // Acquisition at regular time interval is enabled.
-                        if (mcp.regcap.ACQ_REGULAR_ENABLED && !mDevice->mVideoFramesInput) {
-                            time_point<system_clock, std::chrono::seconds> nowTimeSec =
-                                    time_point_cast<std::chrono::seconds>(system_clock::now());
-
-                            auto d = nowTimeSec - refTimeSec;
-                            long secTime = d.count();
-                            if (printFrameStats) {
-                                spdlog::info(
-                                    "\033[2;0H NEXT REGCAP : {} s",
-                                    (int)(mcp.regcap.ACQ_REGULAR_CFG.interval - secTime));
-                            }
-
-                            // Check it's time to run a regular capture.
-                            if (secTime >= mcp.regcap.ACQ_REGULAR_CFG.interval) {
-                                // Current time is after the sunset stop and
-                                // before the sunrise start = NIGHT
-                                if ((currentTimeMode == NIGHT) && (mcp.regcap.ACQ_REGULAR_MODE == NIGHT || mcp.regcap.ACQ_REGULAR_MODE == DAYNIGHT)) {
-                                    logger->info("Run regular acquisition.");
-
-                                    // MC: this is calibration image
-                                    runImageCapture(
-                                        mcp.regcap.ACQ_REGULAR_CFG.rep,
-                                        mcp.regcap.ACQ_REGULAR_CFG.exp,
-                                        mcp.regcap.ACQ_REGULAR_CFG.gain,
-                                        mcp.regcap.ACQ_REGULAR_CFG.fmt,
-                                        mcp.regcap.ACQ_REGULAR_OUTPUT,
-                                        mcp.regcap.ACQ_REGULAR_PRFX);
-
-                                    // Current time is between sunrise start and
-                                    // sunset stop = DAY
-                                } else if (currentTimeMode == DAY && (mcp.regcap.ACQ_REGULAR_MODE == DAY || mcp.regcap.ACQ_REGULAR_MODE == DAYNIGHT)) {
-                                    logger->info("Run regular acquisition.");
-                                    saveImageCaptured(
-                                        *newFrame, 0,
-                                        mcp.regcap.ACQ_REGULAR_OUTPUT,
-                                        mcp.regcap.ACQ_REGULAR_PRFX);
-                                }
-
-                                // Reset reference time in case a long exposure
-                                // has been done.
-                                refTimeSec = time_point_cast<std::chrono::seconds>(system_clock::now());
-                            }
-                        }
-
-                        // Acquisiton at scheduled time is enabled.
-                        if (!mcp.schcap.ACQ_SCHEDULE.empty() && mcp.schcap.ACQ_SCHEDULE_ENABLED && !mDevice->mVideoFramesInput) {
-                            int next = (mNextAcq.hours * 3600 + mNextAcq.min * 60 + mNextAcq.sec) - (newFrame->mDate.hours * 3600 + newFrame->mDate.minutes * 60 + newFrame->mDate.seconds);
-
-                            if (next < 0) {
-                                next = (24 * 3600) - (newFrame->mDate.hours * 3600 + newFrame->mDate.minutes * 60 + newFrame->mDate.seconds) + (mNextAcq.hours * 3600 + mNextAcq.min * 60 + mNextAcq.sec);
-                                spdlog::info("next : {}", next);
-                            }
-
-                            vector<int> tsch = TimeDate::HdecimalToHMS(next / 3600.0);
-
-                            if (printFrameStats) {
-                                spdlog::info(
-                                    "\033[3;0H NEXT SCHCAP : {}h {}m {}s",
-                                    tsch.at(0), tsch.at(1), tsch.at(2));
-                            }
-
-                            // It's time to run scheduled acquisition.
-                            if (mNextAcq.hours == newFrame->mDate.hours && mNextAcq.min == newFrame->mDate.minutes && (int)newFrame->mDate.seconds == mNextAcq.sec) {
-                                CamPixFmt format;
-                                format = mNextAcq.fmt;
-
-                                runImageCapture(
-                                    mNextAcq.rep, mNextAcq.exp, mNextAcq.gain,
-                                    format, mcp.schcap.ACQ_SCHEDULE_OUTPUT, "");
-
-                                // Update mNextAcq
-                                selectNextAcquisitionSchedule(newFrame->mDate);
-
-                            } else {
-                                // The current time has elapsed.
-                                if (newFrame->mDate.hours > mNextAcq.hours) {
-                                    selectNextAcquisitionSchedule(newFrame->mDate);
-
-                                } else if (newFrame->mDate.hours == mNextAcq.hours) {
-                                    if (newFrame->mDate.minutes > mNextAcq.min) {
-                                        selectNextAcquisitionSchedule(newFrame->mDate);
-
-                                    } else if (newFrame->mDate.minutes == mNextAcq.min) {
-                                        if (newFrame->mDate.seconds > mNextAcq.sec) {
-                                            selectNextAcquisitionSchedule(newFrame->mDate);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
                         // Check sunrise and sunset time.
                         if ((((currentTimeInSec > mStartSunriseTime && currentTimeInSec < mStopSunriseTime) || (currentTimeInSec > mStartSunsetTime && currentTimeInSec < mStopSunsetTime))) && !mDevice->mVideoFramesInput) {
                             exposureControlActive = true;
-
                         } else {
                             // Print time before sunrise.
                             if (currentTimeInSec < mStartSunriseTime || currentTimeInSec > mStopSunsetTime) {
@@ -472,10 +379,10 @@ void AcqThread::run()
                 }
 
                 tacq = (((double)getTickCount() - tacq) / getTickFrequency()) * 1000;
-                if (printFrameStats) {
-                    spdlog::debug("\033[6;0H [ TIME ACQ ] : {} ms ~cFPS({})",
+                //if (printFrameStats) {
+                    spdlog::info("[ TIME ACQ ] : {} ms ~cFPS({})",
                         tacq, (1.0 / (tacq / 1000.0)));
-                }
+                //}
                 logger->debug(" [ TIME ACQ ] : {}", tacq);
                 mMustStopMutex.lock();
                 stop = mMustStop;
@@ -512,256 +419,6 @@ void AcqThread::run()
     mThreadTerminated = true;
     spdlog::info("Acquisition Thread TERMINATED.");
     logger->info("Acquisition Thread TERMINATED");
-}
-
-void AcqThread::selectNextAcquisitionSchedule(TimeDate::Date date)
-{
-    if (!mcp.schcap.ACQ_SCHEDULE.empty()) {
-        // Search next acquisition
-        for (int i = 0; i < mcp.schcap.ACQ_SCHEDULE.size(); i++) {
-            if (date.hours < mcp.schcap.ACQ_SCHEDULE.at(i).hours) {
-                mNextAcqIndex = i;
-                break;
-
-            } else if (date.hours == mcp.schcap.ACQ_SCHEDULE.at(i).hours) {
-                if (date.minutes < mcp.schcap.ACQ_SCHEDULE.at(i).min) {
-                    mNextAcqIndex = i;
-                    break;
-
-                } else if (date.minutes == mcp.schcap.ACQ_SCHEDULE.at(i).min) {
-                    if (date.seconds < mcp.schcap.ACQ_SCHEDULE.at(i).sec) {
-                        mNextAcqIndex = i;
-                        break;
-                    }
-                }
-            }
-        }
-
-        mNextAcq = mcp.schcap.ACQ_SCHEDULE.at(mNextAcqIndex);
-    }
-}
-
-bool AcqThread::buildAcquisitionDirectory(TimeDate::Date date)
-{
-    namespace fs = ghc::filesystem;
-    auto logger = spdlog::get("acq_logger");
-    // string root = mdp.DATA_PATH + mstp.STATION_NAME + "_" + YYYYMMDD +"/";
-    string root = DataPaths::getSessionPath(mdp.DATA_PATH, date);
-
-    // string subDir = "captures/";
-    string subDir;
-    string finalPath = root + subDir;
-
-    mOutputDataPath = finalPath;
-    logger->info("CompleteDataPath : {}", mOutputDataPath);
-
-    fs::path p(mdp.DATA_PATH);
-    fs::path p1(root);
-    fs::path p2(root + subDir);
-
-    // If DATA_PATH exists
-    if (fs::exists(p)) {
-        // If DATA_PATH/STATI ON_YYYYMMDD/ exists
-        if (fs::exists(p1)) {
-            // If DATA_PATH/STATION_YYYYMMDD/captures/ doesn't exists
-            if (!fs::exists(p2)) {
-                // If fail to create DATA_PATH/STATION_YYYYMMDD/captures/
-                if (!fs::create_directory(p2)) {
-                    logger->critical("Unable to create captures directory : {}",
-                        p2.string());
-                    return false;
-                    // If success to create DATA_PATH/STATION_YYYYMMDD/captures/
-                } else {
-                    logger->info("Success to create captures directory : {}",
-                        p2.string());
-                    return true;
-                }
-            }
-            // If DATA_PATH/STATION_YYYYMMDD/ doesn't exists
-        } else {
-            // If fail to create DATA_PATH/STATION_YYYYMMDD/
-            if (!fs::create_directory(p1)) {
-                logger->error(
-                    "Unable to create STATION_YYYYMMDD directory : {}",
-                    p1.string());
-                return false;
-                // If success to create DATA_PATH/STATION_YYYYMMDD/
-            } else {
-                logger->info(
-                    "Success to create STATION_YYYYMMDD directory : {}",
-                    p1.string());
-                // If fail to create DATA_PATH/STATION_YYYYMMDD/stack/
-                if (!fs::create_directory(p2)) {
-                    logger->critical("Unable to create captures directory : {}",
-                        p2.string());
-                    return false;
-                    // If success to create DATA_PATH/STATION_YYYYMMDD/stack/
-                } else {
-                    logger->info("Success to create captures directory : {}",
-                        p2.string());
-                    return true;
-                }
-            }
-        }
-
-        // If DATA_PATH doesn't exists
-    } else {
-        // If fail to create DATA_PATH
-        if (!fs::create_directory(p)) {
-            logger->error("Unable to create DATA_PATH directory : {}",
-                p.string());
-            return false;
-            // If success to create DATA_PATH
-        } else {
-            logger->info("Success to create DATA_PATH directory : {}",
-                p.string());
-            // If fail to create DATA_PATH/STATION_YYYYMMDD/
-            if (!fs::create_directory(p1)) {
-                logger->error(
-                    "Unable to create STATION_YYYYMMDD directory : {}",
-                    p1.string());
-                return false;
-                // If success to create DATA_PATH/STATION_YYYYMMDD/
-            } else {
-                logger->info(
-                    "Success to create STATION_YYYYMMDD directory : {}",
-                    p1.string());
-                // If fail to create DATA_PATH/STATION_YYYYMMDD/captures/
-                if (!fs::create_directory(p2)) {
-                    logger->critical("Unable to create captures directory : {}",
-                        p2.string());
-                    return false;
-                    // If success to create DATA_PATH/STATION_YYYYMMDD/captures/
-                } else {
-                    logger->info("Success to create captures directory : {}",
-                        p2.string());
-                    return true;
-                }
-            }
-        }
-    }
-
-    return true;
-}
-
-void AcqThread::runImageCapture(int imgNumber,
-    int imgExposure,
-    int imgGain,
-    CamPixFmt imgFormat,
-    ImgFormat imgOutput,
-    string imgPrefix)
-{
-    auto logger = spdlog::get("acq_logger");
-    // Stop camera
-    mDevice->stopCamera();
-
-    // Stop detection process.
-    if (pDetection != nullptr) {
-        std::unique_lock<std::mutex> lock(*detSignal_mutex);
-        *detSignal = false;
-        lock.unlock();
-        logger->info("Send reset signal to detection process. ");
-        pDetection->interruptThread();
-    }
-
-    // Reset framebuffer.
-    logger->info("Cleaning frameBuffer...");
-    std::unique_lock<std::mutex> lock(*frameBuffer_mutex);
-    frameBuffer->clear();
-    lock.unlock();
-
-    for (int i = 0; i < imgNumber; i++) {
-        logger->info("Prepare capture n° {}", i);
-
-        // Configuration for single capture.
-        Frame frame;
-        logger->info("Exposure time : {}", imgExposure);
-        frame.mExposure = imgExposure;
-        logger->info("Gain : {}", imgGain);
-        frame.mGain = imgGain;
-        EParser<CamPixFmt> format;
-        logger->info("Format : {}", format.getStringEnum(imgFormat));
-        frame.mFormat = imgFormat;
-
-        if (mcp.ACQ_RES_CUSTOM_SIZE) {
-            frame.mStartX = mcp.ACQ_STARTX;
-            frame.mStartY = mcp.ACQ_STARTY;
-            frame.mHeight = mcp.ACQ_HEIGHT;
-            frame.mWidth = mcp.ACQ_WIDTH;
-        }
-
-        // Run single capture.
-        // MC: this looks like the calibration image
-        logger->info("Run single capture.");
-        if (mDevice->runSingleCapture(frame)) {
-            logger->info("Single capture succeed !");
-            spdlog::info("Single capture succeed !");
-            saveImageCaptured(frame, i, imgOutput, imgPrefix);
-        } else {
-            logger->error("Single capture failed !");
-        }
-    }
-
-#ifdef WINDOWS
-    Sleep(1000);
-#else
-#ifdef LINUX
-    // MC: 1s + imgExposure may be long wait. consider other trigger mode
-    //     so that we do net have to wait that long after each calib image.
-    sleep(1 + (imgExposure / 1000000));
-#endif
-#endif
-
-    logger->info("Restarting camera in continuous mode...");
-
-    // RECREATE CAMERA
-    if (!mDevice->recreateCamera())
-        throw "Fail to restart camera.";
-    prepareAcquisitionOnDevice();
-}
-
-void AcqThread::saveImageCaptured(Frame& img,
-    int imgNum,
-    ImgFormat outputType,
-    string imgPrefix)
-{
-    auto logger = spdlog::get("acq_logger");
-    if (img.mImg.data) {
-        // string  YYYYMMDD = TimeDate::getYYYYMMDD(img.mDate);
-
-        if (buildAcquisitionDirectory(img.mDate)) {
-            // string fileName = imgPrefix + "_" +
-            // TimeDate::getYYYYMMDDThhmmss(img.mDate) + "_UT-" +
-            // Conversion::intToString(imgNum);
-
-            string dateFileName = TimeDate::getYYYY_MM_DD_hhmmss(img.mDate);
-            string fileName = mstp.TELESCOP + "_" + dateFileName + "_" + mstp.INSTRUME + "_calibration"; // + imObsType
-
-            switch (outputType) {
-            case JPEG: {
-                switch (img.mFormat) {
-                case MONO12: {
-                    Mat temp;
-                    img.mImg.copyTo(temp);
-                    Mat newMat = ImgProcessing::correctGammaOnMono12(temp, 2.2);
-                    Mat newMat2 = Conversion::convertTo8UC1(newMat);
-                    SaveImg::saveJPEG(newMat2,
-                        mOutputDataPath + fileName);
-                } break;
-                default: {
-                    Mat temp;
-                    img.mImg.copyTo(temp);
-                    Mat newMat = ImgProcessing::correctGammaOnMono8(temp, 2.2);
-                    SaveImg::saveJPEG(newMat,
-                        mOutputDataPath + fileName);
-                }
-                }
-            }
-
-            break;
-            }
-        }
-    }
 }
 
 bool AcqThread::computeSunTimes()
