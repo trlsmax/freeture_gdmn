@@ -138,5 +138,5 @@ public:
 	int FramesAround(void) { return nbFramesAround; }
 	int FirstEventFrameNbr(void) { return firstEventFrameNbr; }
 	int LastEventFrameNbr(void) { return lastEventFrameNbr; }
-	void GetFramesBeforeEvent(CDoubleLinkedList<std::shared_ptr<Frame>>* buffer);
+	void GetFramesBeforeEvent(CDoubleLinkedList<std::shared_ptr<Frame>>::Iterator current);
 };

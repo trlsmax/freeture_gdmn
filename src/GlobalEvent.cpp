@@ -298,19 +298,13 @@ bool GlobalEvent::ratioFramesDist()
 }
 
 
-void GlobalEvent::GetFramesBeforeEvent(CDoubleLinkedList<std::shared_ptr<Frame>>* buffer)
+void GlobalEvent::GetFramesBeforeEvent(CDoubleLinkedList<std::shared_ptr<Frame>>::Iterator current)
 {
-	if (!buffer) {
-		return;
-	}
-
-	int begin = firstEventFrameNbr - nbFramesAround;
-	std::list<std::shared_ptr<Frame>> tmp;
-	for (auto itr = buffer->begin(); itr != buffer->end(); ++itr) {
-		if (itr.Value()->mFrameNumber >= begin && itr.Value()->mFrameNumber < firstEventFrameNbr) {
-			tmp.push_back(itr.Value());
+	int nbr = nbFramesAround;
+	while (nbr--) {
+		--current;
+		if (current.Valid() && current.Value()) {
+			frames.push_front(current.Value());
 		}
 	}
-
-	frames.insert(frames.begin(), tmp.begin(), tmp.end());
 }

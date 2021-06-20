@@ -70,7 +70,6 @@ AcqThread::AcqThread(CDoubleLinkedList<std::shared_ptr<Frame>>* fb,
     mDevice = NULL;
     mThreadTerminated = false;
     mNextAcqIndex = 0;
-    pExpCtrl = NULL;
     mDeviceID = cid;
     mdp = dp;
     mstp = stp;
@@ -89,9 +88,6 @@ AcqThread::~AcqThread(void)
 
     if (mThread != NULL)
         delete mThread;
-
-    if (pExpCtrl != NULL)
-        delete pExpCtrl;
 }
 
 void AcqThread::stopThread()
@@ -154,15 +150,6 @@ void AcqThread::run()
         bool exposureControlActive = false;
         bool cleanStatus = false;
 
-        // If exposure can be set on the input device.
-        if (mDevice->getExposureStatus()) {
-            pExpCtrl = new ExposureControl(mcp.EXPOSURE_CONTROL_FREQUENCY,
-                mcp.EXPOSURE_CONTROL_SAVE_IMAGE,
-                mcp.EXPOSURE_CONTROL_SAVE_INFOS,
-                mdp.DATA_PATH, mstp.STATION_NAME);
-            pExpCtrl->setFrameStats(this->printFrameStats);
-        }
-
         TimeMode previousTimeMode = NONE;
 
         /// Acquisition process.
@@ -177,10 +164,6 @@ void AcqThread::run()
 
             if (pDetection != nullptr)
                 pDetection->setCurrentDataSet(location);
-
-            // Reference time to compute interval between regular captures.
-            time_point<system_clock, std::chrono::seconds> refTimeSec =
-                    time_point_cast<std::chrono::seconds>(system_clock::now());
 
             do {
                 // Container for the grabbed image.
@@ -269,36 +252,24 @@ void AcqThread::run()
                             }
                             cleanStatus = false;
                         } else {
+                            exposureControlStatus = false;
                             // Exposure control is active, the new frame can't
                             // be shared with others threads.
-                            if (!cleanStatus) {
-                                // If detection process exists
-                                if (pDetection != NULL) {
-                                    std::unique_lock<std::mutex> lock(*detSignal_mutex);
-                                    *detSignal = false;
-                                    lock.unlock();
-                                    spdlog::info("Sending interruption signal to detection process... ");
-                                    pDetection->interruptThread();
-                                }
-
-                                // Reset framebuffer.
-                                spdlog::info("Cleaning frameBuffer...");
-                                std::unique_lock<std::mutex> lock(*frameBuffer_mutex);
-                                frameBuffer->clear();
+                            // If detection process exists
+                            if (pDetection != NULL) {
+                                std::unique_lock<std::mutex> lock(*detSignal_mutex);
+                                *detSignal = false;
                                 lock.unlock();
-
-                                cleanStatus = true;
+                                spdlog::info("Sending interruption signal to detection process... ");
+                                pDetection->interruptThread();
                             }
+
+                            // Reset framebuffer.
+                            spdlog::info("Cleaning frameBuffer...");
+                            std::unique_lock<std::mutex> lock(*frameBuffer_mutex);
+                            frameBuffer->clear();
+                            lock.unlock();
                         }
-
-                        previousTimeMode = currentTimeMode;
-
-                        // Adjust exposure time.
-                        if (pExpCtrl != NULL && exposureControlActive)
-                            exposureControlStatus = pExpCtrl->controlExposureTime(
-                                mDevice, newFrame->mImg, newFrame->mDate,
-                                mdtp.MASK, mDevice->mMinExposureTime,
-                                mcp.ACQ_FPS);
 
                         // Get current date YYYYMMDD.
                         string currentFrameDate = TimeDate::getYYYYMMDD(newFrame->mDate);
@@ -307,74 +278,33 @@ void AcqThread::run()
                         // updated.
                         if (currentFrameDate != mCurrentDate) {
                             logger->info(
-                                "Date has changed. Former Date is {} . New "
-                                "Date is {}",
+                                "Date has changed. Former Date is {} . "
+                                "New Date is {}",
                                 mCurrentDate, currentFrameDate);
                             computeSunTimes();
                         }
 
-                        // Check sunrise and sunset time.
-                        if ((((currentTimeInSec > mStartSunriseTime && currentTimeInSec < mStopSunriseTime) || (currentTimeInSec > mStartSunsetTime && currentTimeInSec < mStopSunsetTime))) && !mDevice->mVideoFramesInput) {
-                            exposureControlActive = true;
-                        } else {
-                            // Print time before sunrise.
-                            if (currentTimeInSec < mStartSunriseTime || currentTimeInSec > mStopSunsetTime) {
-                                vector<int> nextSunrise;
-                                if (currentTimeInSec < mStartSunriseTime)
-                                    nextSunrise = TimeDate::HdecimalToHMS((mStartSunriseTime - currentTimeInSec) / 3600.0);
-                                if (currentTimeInSec > mStopSunsetTime)
-                                    nextSunrise = TimeDate::HdecimalToHMS(((24 * 3600 - currentTimeInSec) + mStartSunriseTime) / 3600.0);
+                        if (previousTimeMode != currentTimeMode) {
+                            exposureControlStatus = true;
+                            // In DAYTIME : Apply minimum available exposure
+                            // time.
+                            if ((currentTimeInSec >= mStopSunriseTime && currentTimeInSec < mStartSunsetTime)) {
+                                logger->info("Apply day exposure time : {}", mDevice->getDayExposureTime());
+                                mDevice->setCameraDayExposureTime();
+                                logger->info("Apply day exposure time : {}", mDevice->getDayGain());
+                                mDevice->setCameraDayGain();
 
-                                if (printFrameStats) {
-                                    spdlog::info(
-                                        "\033[4;0H NEXT SUNRISE : {}h {}m {}s",
-                                        nextSunrise.at(0), nextSunrise.at(1),
-                                        nextSunrise.at(2));
-                                }
+                                // In NIGHTTIME : Apply maximum available
+                                // exposure time.
+                            } else if ((currentTimeInSec >= mStopSunsetTime) || (currentTimeInSec < mStartSunriseTime)) {
+                                logger->info("Apply night exposure time. {}", mDevice->getNightExposureTime());
+                                mDevice->setCameraNightExposureTime();
+                                logger->info("Apply night exposure time. {}", mDevice->getNightGain());
+                                mDevice->setCameraNightGain();
                             }
-
-                            // Print time before sunset.
-                            if (currentTimeInSec > mStopSunriseTime && currentTimeInSec < mStartSunsetTime) {
-                                vector<int> nextSunset;
-                                nextSunset = TimeDate::HdecimalToHMS((mStartSunsetTime - currentTimeInSec) / 3600.0);
-                                if (printFrameStats) {
-                                    spdlog::info(
-                                        "\033[5;0H NEXT SUNSET : {}h {}m {}s",
-                                        nextSunset.at(0), nextSunset.at(1),
-                                        nextSunset.at(2));
-                                }
-                            }
-
-                            // Reset exposure time when sunrise or sunset is
-                            // finished.
-                            if (exposureControlActive) {
-                                // In DAYTIME : Apply minimum available exposure
-                                // time.
-                                if ((currentTimeInSec >= mStopSunriseTime && currentTimeInSec < mStartSunsetTime)) {
-                                    logger->info("Apply day exposure time : {}",
-                                        mDevice->getDayExposureTime());
-                                    mDevice->setCameraDayExposureTime();
-                                    logger->info("Apply day exposure time : {}",
-                                        mDevice->getDayGain());
-                                    mDevice->setCameraDayGain();
-
-                                    // In NIGHTTIME : Apply maximum available
-                                    // exposure time.
-                                } else if ((currentTimeInSec >= mStopSunsetTime) || (currentTimeInSec < mStartSunriseTime)) {
-                                    logger->info(
-                                        "Apply night exposure time. {}",
-                                        mDevice->getNightExposureTime());
-                                    mDevice->setCameraNightExposureTime();
-                                    logger->info(
-                                        "Apply night exposure time. {}",
-                                        mDevice->getNightGain());
-                                    mDevice->setCameraNightGain();
-                                }
-                            }
-
-                            exposureControlActive = false;
-                            exposureControlStatus = false;
                         }
+
+                        previousTimeMode = currentTimeMode;
                     }
                 }
 

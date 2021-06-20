@@ -250,15 +250,20 @@ void DetectionTemporal::saveDetectionInfos(GlobalEvent* ge, string path)
 			// Conversion::intToString(pos.x)  + ";" +
 			// Conversion::intToString(positionY) + ")                 " +
 			// TimeDate::getIsoExtendedFormatDate(itLE->mFrameAcqDate)+ "\n";
-			string line = Conversion::intToString((*itLe)->getNumFrame() - numFirstFrame + ge->FramesAround()) + "," + TimeDate::getIsoExtendedFormatDate((*itLe)->mFrameAcqDate) + "," + Conversion::intToString(pos.x) + "," + Conversion::intToString(positionY) + "\n";
+			string line = Conversion::intToString((*itLe)->getNumFrame() - numFirstFrame + ge->FramesAround()) + 
+				"," + TimeDate::getIsoExtendedFormatDate((*itLe)->mFrameAcqDate) + 
+				"," + Conversion::intToString(pos.x) + 
+				"," + Conversion::intToString(positionY) + "\n";
 			posFile << line;
 		}
 
+		// calc speed
 		auto t = std::chrono::duration_cast<std::chrono::milliseconds>(
 			ge->LEList.back()->mFrameAcqDate.tp - ge->LEList.front()->mFrameAcqDate.tp).count();
 		float speed = dist * 1000 / t;
 		line = "Speed," + std::to_string(speed) + ",pixel/s";
 		posFile << line;
+
 		posFile.close();
 	}
 }
@@ -570,16 +575,12 @@ std::shared_ptr<GlobalEvent> DetectionTemporal::runDetection(std::shared_ptr<Fra
 		tStep3 = (double)getTickCount();
 
 		for (auto itLE = listLocalEvents.begin(); itLE != listLocalEvents.end();) {
-			bool LELinked = false;
 			std::shared_ptr<GlobalEvent> pGESelected = nullptr;
 			(*itLE)->setNumFrame(c->mFrameNumber);
 
 			for (auto& ge : mListGlobalEvents) {
 				Mat res = (*itLE)->getMap() & ge->getMapEvent();
-
 				if (countNonZero(res) > 0) {
-					LELinked = true;
-
 					// The current LE has found a possible global event.
 					if (pGESelected) {
 						// cout << "The current LE has found a possible global event."<< endl;
@@ -593,8 +594,6 @@ std::shared_ptr<GlobalEvent> DetectionTemporal::runDetection(std::shared_ptr<Fra
 						// cout << "Keep same"<< endl;
 						pGESelected = ge;
 					}
-
-					break;
 				}
 			}
 
@@ -679,17 +678,6 @@ std::shared_ptr<GlobalEvent> DetectionTemporal::runDetection(std::shared_ptr<Fra
 				if (nbsec > mdtp.DET_TIME_MAX)
 					maxtime = true;
 
-				// Check some characteristics : Too long event ? not linear ?
-				if ((!(*itGE)->getLinearStatus() && !(*itGE)->continuousGoodPos(5))) {
-					itGE = mListGlobalEvents.erase(itGE); // Delete the event.
-					continue;
-				}
-
-				if ((!(*itGE)->getLinearStatus() && (*itGE)->continuousBadPos((int)(*itGE)->getAge() / 2))) {
-					itGE = mListGlobalEvents.erase(itGE); // Delete the event.
-					continue;
-				}
-
 				if (maxtime) {
 					logger->info("# GE deleted because max time reached - itGE->getDate() : {}",
 						TimeDate::getYYYYMMDDThhmmss((*itGE)->getDate()));
@@ -698,6 +686,13 @@ std::shared_ptr<GlobalEvent> DetectionTemporal::runDetection(std::shared_ptr<Fra
 					logger->info("- maxtime in sec : {}", mdtp.DET_TIME_MAX);
 					itGE = mListGlobalEvents.erase(itGE); // Delete the event.
 					// Let the GE alive.
+				}
+				// Check some characteristics : Too long event ? not linear ?
+				else if ((!(*itGE)->getLinearStatus() && !(*itGE)->continuousGoodPos(5))) {
+					itGE = mListGlobalEvents.erase(itGE); // Delete the event.
+				}
+				else if ((!(*itGE)->getLinearStatus() && (*itGE)->continuousBadPos((int)(*itGE)->getAge() / 2))) {
+					itGE = mListGlobalEvents.erase(itGE); // Delete the event.
 				}
 				else if (c->mFrameRemaining < 10 && c->mFrameRemaining != 0) {
 					if ((*itGE)->LEList.size() >= 5 && 

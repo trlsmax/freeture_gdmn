@@ -49,7 +49,6 @@
 #include "ECamPixFmt.h"
 #include "EImgFormat.h"
 #include "Ephemeris.h"
-#include "ExposureControl.h"
 #include "ImgProcessing.h"
 #include "SParam.h"
 #include "config.h"
@@ -71,15 +70,16 @@ private:
     int mNextAcqIndex;
     DetThread* pDetection; // Pointer on detection thread in order to stop it
         // or reset it when a regular capture occurs.
-    ExposureControl* pExpCtrl; // Pointer on exposure time control object while
         // sunrise and sunset.
     string mOutputDataPath; // Dynamic location where to save data (regular
         // captures etc...).
     string mCurrentDate;
     int mStartSunriseTime {}; // In seconds.
     int mStopSunriseTime {}; // In seconds.
+    int mSunriseTime;
     int mStartSunsetTime {}; // In seconds.
     int mStopSunsetTime {}; // In seconds.
+    int mSunsetTime;
     int mCurrentTime {}; // In seconds.
 
     // Parameters from configuration file.

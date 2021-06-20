@@ -226,7 +226,7 @@ void DetThread::run()
                                         logger->info("Saving event...");
                                         string eventBase = mstp.TELESCOP + "_" + TimeDate::getYYYY_MM_DD_hhmmss(mEventDate);
                                         std::unique_lock<std::mutex> lock3(*frameBuffer_mutex);
-                                        itr->first->GetFramesBeforeEvent(frameBuffer);
+                                        itr->first->GetFramesBeforeEvent(currentFrame);
                                         lock3.unlock();
                                         pDetMthd->saveDetectionInfos(itr->first.get(), mEventPath + eventBase);
                                         if (!saveEventData(itr->first.get()))
