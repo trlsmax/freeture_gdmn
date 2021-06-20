@@ -302,23 +302,17 @@ std::shared_ptr<GlobalEvent> DetectionTemporal::runDetection(std::shared_ptr<Fra
 		}
 	}
 	else {
-		double tDownsample = 0;
-		double tAbsDiff = 0;
-		double tPosDiff = 0;
-		double tNegDiff = 0;
-		double tDilate = 0;
-		double tThreshold = 0;
-		double tStep1 = 0;
-		double tStep2 = 0;
-		double tStep3 = 0;
-		double tStep4 = 0;
-		double tTotal = (double)getTickCount();
+		//double tStep1 = 0;
+		//double tStep2 = 0;
+		//double tStep3 = 0;
+		//double tStep4 = 0;
+		//double tTotal = (double)getTickCount();
 
 		/// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 		/// %%%%%%%%%%%%%%%%%%%%%%%%%%% STEP 1 : FILETRING / THRESHOLDING %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 		/// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-		tStep1 = (double)getTickCount();
+		//tStep1 = (double)getTickCount();
 		Mat currImg;
 
 		// ------------------------------
@@ -328,7 +322,6 @@ std::shared_ptr<GlobalEvent> DetectionTemporal::runDetection(std::shared_ptr<Fra
 		if (mdtp.DET_DOWNSAMPLE_ENABLED) {
 			pyrDown(c->mImg, currImg, Size(c->mImg.cols / 2, c->mImg.rows / 2));
 			if (mMask.data && (mMask.rows != currImg.rows || mMask.cols != currImg.cols)) {
-				spdlog::info("Down sample mask");
 				Mat tmp;
 				mMask.copyTo(tmp);
 				cv::resize(tmp, mMask, Size(c->mImg.cols / 2, c->mImg.rows / 2));
@@ -412,7 +405,7 @@ std::shared_ptr<GlobalEvent> DetectionTemporal::runDetection(std::shared_ptr<Fra
 		// Current frame is stored as the previous frame.
 		currImg.copyTo(mPrevFrame);
 
-		tStep1 = (double)getTickCount() - tStep1;
+		//tStep1 = (double)getTickCount() - tStep1;
 
 		/// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 		/// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% STEP 2 : FIND LOCAL EVENT %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -432,7 +425,7 @@ std::shared_ptr<GlobalEvent> DetectionTemporal::runDetection(std::shared_ptr<Fra
 		// clearly split in two groups (negative, positive).
 
 		list<std::shared_ptr<LocalEvent>> listLocalEvents;
-		tStep2 = (double)getTickCount();
+		//tStep2 = (double)getTickCount();
 
 		// Event map for the current frame.
 		Mat eventMap = Mat(currImg.rows, currImg.cols, CV_8UC3, Scalar(0, 0, 0));
@@ -560,7 +553,7 @@ std::shared_ptr<GlobalEvent> DetectionTemporal::runDetection(std::shared_ptr<Fra
 				mDebugCurrentPath + "/event_map_filtered/frame_" + Conversion::intToString(c->mFrameNumber));
 		}
 
-		tStep2 = (double)getTickCount() - tStep2;
+		//tStep2 = (double)getTickCount() - tStep2;
 
 		/// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 		/// %%%%%%%%%%%%%%%%%%%%%%%%%% STEP 3 : ATTACH LE TO GE OR CREATE NEW ONE %%%%%%%%%%%%%%%%%%%%%%%%%
@@ -572,7 +565,7 @@ std::shared_ptr<GlobalEvent> DetectionTemporal::runDetection(std::shared_ptr<Fra
 		// event or attach it to an existing global event. If attached,
 		// check the positive-negative couple of the global event.
 
-		tStep3 = (double)getTickCount();
+		//tStep3 = (double)getTickCount();
 
 		for (auto itLE = listLocalEvents.begin(); itLE != listLocalEvents.end();) {
 			std::shared_ptr<GlobalEvent> pGESelected = nullptr;
@@ -632,13 +625,13 @@ std::shared_ptr<GlobalEvent> DetectionTemporal::runDetection(std::shared_ptr<Fra
 			itLE = listLocalEvents.erase(itLE); // Delete the current localEvent.
 		}
 
-		tStep3 = (double)getTickCount() - tStep3;
+		//tStep3 = (double)getTickCount() - tStep3;
 
 		/// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 		/// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%% STEP 4 : MANAGE LIST GLOBAL EVENT %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 		/// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-		tStep4 = (double)getTickCount(); // Count process time of step 4.
+		//tStep4 = (double)getTickCount(); // Count process time of step 4.
 		bool saveSignal = false; // Returned signal to indicate to save a GE or not.
 
 		// Loop global event list to check their characteristics.
@@ -713,16 +706,16 @@ std::shared_ptr<GlobalEvent> DetectionTemporal::runDetection(std::shared_ptr<Fra
 			}
 		}
 
-		tStep4 = (double)getTickCount() - tStep4;
-		tTotal = (double)getTickCount() - tTotal;
-		double freq = getTickFrequency();
-		logger->debug("{},tt:{}ms,s1:{}ms,s2:{}ms,s3:{}ms,s4:{}ms", 
-			c->mFrameNumber,
-			tTotal * 1000 / freq,
-			tStep1 * 1000 / freq,
-			tStep2 * 1000 / freq,
-			tStep3 * 1000 / freq,
-			tStep4 * 1000 / freq);
+		//tStep4 = (double)getTickCount() - tStep4;
+		//tTotal = (double)getTickCount() - tTotal;
+		//double freq = getTickFrequency();
+		//logger->debug("{},tt:{}ms,s1:{}ms,s2:{}ms,s3:{}ms,s4:{}ms", 
+		//	c->mFrameNumber,
+		//	tTotal * 1000 / freq,
+		//	tStep1 * 1000 / freq,
+		//	tStep2 * 1000 / freq,
+		//	tStep3 * 1000 / freq,
+		//	tStep4 * 1000 / freq);
 		if (saveSignal) {
 			auto ret = *mGeToSave;
 			mListGlobalEvents.erase(mGeToSave);

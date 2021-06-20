@@ -76,10 +76,8 @@ private:
     string mCurrentDate;
     int mStartSunriseTime {}; // In seconds.
     int mStopSunriseTime {}; // In seconds.
-    int mSunriseTime;
     int mStartSunsetTime {}; // In seconds.
     int mStopSunsetTime {}; // In seconds.
-    int mSunsetTime;
     int mCurrentTime {}; // In seconds.
 
     // Parameters from configuration file.
