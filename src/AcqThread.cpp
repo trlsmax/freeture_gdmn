@@ -284,19 +284,14 @@ void AcqThread::run()
                             computeSunTimes();
                         }
 
-                        if (previousTimeMode != currentTimeMode) {
+                        if (previousTimeMode != currentTimeMode && mdtp.DET_MODE != DAYNIGHT) {
                             exposureControlStatus = true;
-                            // In DAYTIME : Apply minimum available exposure
-                            // time.
-                            if ((currentTimeInSec >= mStopSunriseTime && currentTimeInSec < mStartSunsetTime)) {
+                            if (currentTimeMode == DAY) { // In DAYTIME : Apply minimum available exposure time.
                                 logger->info("Apply day exposure time : {}", mDevice->getDayExposureTime());
                                 mDevice->setCameraDayExposureTime();
                                 logger->info("Apply day exposure time : {}", mDevice->getDayGain());
                                 mDevice->setCameraDayGain();
-
-                                // In NIGHTTIME : Apply maximum available
-                                // exposure time.
-                            } else if ((currentTimeInSec >= mStopSunsetTime) || (currentTimeInSec < mStartSunriseTime)) {
+                            } else { // In NIGHTTIME : Apply maximum available exposure time.
                                 logger->info("Apply night exposure time. {}", mDevice->getNightExposureTime());
                                 mDevice->setCameraNightExposureTime();
                                 logger->info("Apply night exposure time. {}", mDevice->getNightGain());
