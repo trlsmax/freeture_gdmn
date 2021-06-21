@@ -165,7 +165,6 @@
     <ClCompile Include="..\src\Device.cpp" />
     <ClCompile Include="..\src\EParser.cpp" />
     <ClCompile Include="..\src\Ephemeris.cpp" />
-    <ClCompile Include="..\src\ExposureControl.cpp" />
     <ClCompile Include="..\src\Frame.cpp" />
     <ClCompile Include="..\src\GlobalEvent.cpp" />
     <ClCompile Include="..\src\Histogram.cpp" />
@@ -174,7 +173,6 @@
     <ClCompile Include="..\src\ImgProcessing.cpp" />
     <ClCompile Include="..\src\LocalEvent.cpp" />
     <ClCompile Include="..\src\main.cpp" />
-    <ClCompile Include="..\src\Mask.cpp" />
     <ClCompile Include="..\src\PixFmtConv.cpp" />
     <ClCompile Include="..\src\SaveImg.cpp" />
     <ClCompile Include="..\src\Stack.cpp" />

@@ -120,9 +120,10 @@ bool CameraWindows::setSize(int startx, int starty, int width, int height, bool 
 
         cv::Mat image( mHeight, mWidth, CV_8UC3, mBuffer );
         Mat img;
-        cv::cvtColor(image, img, CV_BGR2GRAY);
+        cv::cvtColor(image, img, COLOR_BGR2GRAY);
         string acquisitionDate = TimeDate::IsoExtendedStringNow();
-        frame = Frame(img, 0, 0, acquisitionDate);
+        frame = Frame(img, 0, 0);
+        frame.mDate.Reset();
         frame.mFps = 0;
         frame.mFormat = MONO8;
         frame.mSaturatedValue = 255;
@@ -229,9 +230,10 @@ bool  CameraWindows::grabImage(Frame &newFrame){
 
         cv::Mat image( mHeight, mWidth, CV_8UC3, mBuffer );
         Mat img;
-        cv::cvtColor(image, img, CV_BGR2GRAY);
+        cv::cvtColor(image, img, COLOR_BGR2GRAY);
         //string acquisitionDate = TimeDate::IsoExtendedStringNow();
         newFrame = Frame(img, 0, 0);
+        newFrame.mDate.Reset();
         newFrame.mFps = 0;
         newFrame.mFormat = MONO8;
         newFrame.mSaturatedValue = 255;

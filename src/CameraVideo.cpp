@@ -122,6 +122,7 @@ bool CameraVideo::grabImage(Frame &img)
         Frame f = Frame(frame, 0, 0);
 
         img = f;
+        img.mDate.Reset();
         img.mFrameNumber = mCap.get(CAP_PROP_POS_FRAMES);
         img.mFrameRemaining = mCap.get(CAP_PROP_FRAME_COUNT) - mCap.get(CAP_PROP_POS_FRAMES);
         return true;
