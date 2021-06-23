@@ -69,6 +69,8 @@ private:
 	int firstEventFrameNbr;
 	int lastEventFrameNbr;
 	std::list<std::shared_ptr<Frame>> frames;
+	float geDist;
+	float geSpeed;
 
 
 public:
@@ -139,4 +141,5 @@ public:
 	int FirstEventFrameNbr(void) { return firstEventFrameNbr; }
 	int LastEventFrameNbr(void) { return lastEventFrameNbr; }
 	void GetFramesBeforeEvent(CDoubleLinkedList<std::shared_ptr<Frame>>::Iterator current);
+	float Speed(bool isDownSample = false) { return isDownSample ? (geSpeed * 2.f) : geSpeed; }
 };

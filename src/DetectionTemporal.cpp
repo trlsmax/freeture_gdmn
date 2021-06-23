@@ -221,8 +221,6 @@ void DetectionTemporal::saveDetectionInfos(GlobalEvent* ge, string path)
 		string line = "frame_id,datetime,x_fits,y_fits\n";
 		posFile << line;
 
-		int lastX = -1, lastY = -1;
-		float dist = 0.f;
 		for (auto itLe = ge->LEList.begin(); itLe != ge->LEList.end(); ++itLe) {
 			if (numFirstFrame == -1)
 				numFirstFrame = (*itLe)->getNumFrame();
@@ -238,12 +236,6 @@ void DetectionTemporal::saveDetectionInfos(GlobalEvent* ge, string path)
 				positionY = mPrevFrame.rows - pos.y;
 			}
 
-			if (itLe != ge->LEList.begin()) {
-				dist += sqrtf((pos.x - lastX) * (pos.x - lastX) + (positionY - lastY) * (positionY - lastY));
-			}
-			lastX = pos.x;
-			lastY = positionY;
-
 			// NUM_FRAME    POSITIONX     POSITIONY (inversed)
 			// string line = Conversion::intToString(itLE->getNumFrame() -
 			// numFirstFrame + nbFramesAround) + "               (" +
@@ -257,11 +249,7 @@ void DetectionTemporal::saveDetectionInfos(GlobalEvent* ge, string path)
 			posFile << line;
 		}
 
-		// calc speed
-		auto t = std::chrono::duration_cast<std::chrono::milliseconds>(
-			ge->LEList.back()->mFrameAcqDate.tp - ge->LEList.front()->mFrameAcqDate.tp).count();
-		float speed = dist * 1000 / t;
-		line = "Speed," + std::to_string(speed) + ",pixel/s";
+		line = "Speed," + std::to_string(ge->Speed(mdtp.DET_DOWNSAMPLE_ENABLED)) + ",pixel/s";
 		posFile << line;
 
 		posFile.close();

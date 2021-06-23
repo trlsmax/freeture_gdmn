@@ -54,6 +54,8 @@ GlobalEvent::GlobalEvent(TimeDate::Date frameDate, std::shared_ptr<Frame> curren
 	frames.push_back(currentFrame);
     firstEventFrameNbr = currentFrame->mFrameNumber;
     nbFramesAround = 0;
+	geDist = 0.f;
+	geSpeed = 0.f;
 }
 
 GlobalEvent::~GlobalEvent()
@@ -182,10 +184,18 @@ bool GlobalEvent::addLE(std::shared_ptr<LocalEvent> le)
 	// Add the le in input to the current ge.
 	if (addLeDecision) {
 		// Save center of mass.
+		if (!pts.empty()) {
+			geDist += sqrtf((center.x - pts.back().x) * (center.x - pts.back().x) + (center.y - pts.back().y) * (center.y - pts.back().y));
+		}
 		pts.push_back(center);
 
 		// Add the LE to the current GE.
 		LEList.push_back(le);
+		if (LEList.size() > 1) {
+			auto t = std::chrono::duration_cast<std::chrono::milliseconds>(
+				LEList.back()->mFrameAcqDate.tp - LEList.front()->mFrameAcqDate.tp).count();
+			geSpeed = geDist * 1000 / t;
+		}
 
 		// Reset age without any new le.
 		geAgeLastLE = 0;
