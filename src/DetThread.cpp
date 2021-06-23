@@ -142,7 +142,7 @@ void DetThread::run()
 	mIsRunning = true;
 	bool eventToComplete = false;
 	auto currentFrame = frameBuffer->end();
-	std::list<std::pair<std::shared_ptr<GlobalEvent>, time_point<system_clock, std::chrono::seconds>>> listGlobalEvent;
+	std::list<std::tuple<std::shared_ptr<GlobalEvent>, time_point<system_clock, std::chrono::seconds>, CDoubleLinkedList<std::shared_ptr<Frame>>::Iterator>> listGlobalEvent;
 	// Flag to indicate that an event must be complete with more frames.
 	// Reference date to count time to complete an event.
 	time_point<system_clock, std::chrono::seconds> refTimeSec = time_point_cast<std::chrono::seconds>(system_clock::now());
@@ -201,7 +201,7 @@ void DetThread::run()
                             // Run detection process.
                             std::shared_ptr<GlobalEvent> ret = pDetMthd->runDetection(lastFrame);
                             if (ret) {
-                                listGlobalEvent.emplace_back(ret, time_point_cast<std::chrono::seconds>(system_clock::now()));
+                                listGlobalEvent.emplace_back(ret, time_point_cast<std::chrono::seconds>(system_clock::now()), lastFrame);
                                 //logger->info( "Event detected ! Waiting frames to complete the event...");
                                 spdlog::info( "Event detected ! Waiting frames to complete the event...");
                                 mNbDetection++;
@@ -210,12 +210,12 @@ void DetThread::run()
                             if (!listGlobalEvent.empty()) {
                                 time_point<system_clock, std::chrono::seconds> nowTimeSec = time_point_cast<std::chrono::seconds>(system_clock::now());
                                 for (auto itr = listGlobalEvent.begin(); itr != listGlobalEvent.end();) {
-                                    itr->first->AddFrame(lastFrame, false);
-                                    if ((nowTimeSec - itr->second).count() > mdtp.DET_TIME_AROUND) {
+                                    std::get<0>(*itr)->AddFrame(lastFrame, false);
+                                    if ((nowTimeSec - std::get<1>(*itr)).count() > mdtp.DET_TIME_AROUND) {
                                         //logger->info("Event completed.");
                                         spdlog::info("Event completed.");
                                         // Build event directory.
-                                        mEventDate = itr->first->getDate();
+                                        mEventDate = std::get<0>(*itr)->getDate();
 
                                         if (buildEventDataDirectory())
                                             logger->info("Success to build event directory.");
@@ -226,10 +226,10 @@ void DetThread::run()
                                         logger->info("Saving event...");
                                         string eventBase = mstp.TELESCOP + "_" + TimeDate::getYYYY_MM_DD_hhmmss(mEventDate);
                                         std::unique_lock<std::mutex> lock3(*frameBuffer_mutex);
-                                        itr->first->GetFramesBeforeEvent(currentFrame);
+                                        std::get<0>(*itr)->GetFramesBeforeEvent(std::get<2>(*itr));
                                         lock3.unlock();
-                                        pDetMthd->saveDetectionInfos(itr->first.get(), mEventPath + eventBase);
-                                        if (!saveEventData(itr->first.get()))
+                                        pDetMthd->saveDetectionInfos(std::get<0>(*itr).get(), mEventPath + eventBase);
+                                        if (!saveEventData(std::get<0>(*itr).get()))
                                             spdlog::info("Error saving event data.");
                                         else
                                             spdlog::info("Success to save event !");
