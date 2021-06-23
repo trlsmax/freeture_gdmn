@@ -201,7 +201,7 @@ void DetThread::run()
                             // Run detection process.
                             std::shared_ptr<GlobalEvent> ret = pDetMthd->runDetection(lastFrame);
                             if (ret) {
-                                listGlobalEvent.emplace_back(ret, time_point_cast<std::chrono::seconds>(system_clock::now()), lastFrame);
+                                listGlobalEvent.emplace_back(ret, time_point_cast<std::chrono::seconds>(system_clock::now()), currentFrame);
                                 //logger->info( "Event detected ! Waiting frames to complete the event...");
                                 spdlog::info( "Event detected ! Waiting frames to complete the event...");
                                 mNbDetection++;
