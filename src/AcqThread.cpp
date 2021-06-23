@@ -148,7 +148,6 @@ void AcqThread::run()
         // Exposure adjustment variables.
         bool exposureControlStatus = false;
         bool exposureControlActive = false;
-        bool cleanStatus = false;
 
         TimeMode previousTimeMode = NONE;
 
@@ -166,62 +165,85 @@ void AcqThread::run()
                 pDetection->setCurrentDataSet(location);
 
             do {
-                // Container for the grabbed image.
-                std::shared_ptr<Frame> newFrame(std::make_shared<Frame>());
+				// Time counter of grabbing a frame.
+				auto tacq = (double)getTickCount();
 
-                // Time counter of grabbing a frame.
-                auto tacq = (double)getTickCount();
+				// If camera type in input is FRAMES or VIDEO.
+				if (mDevice->mVideoFramesInput) {
+					// Container for the grabbed image.
+					std::shared_ptr<Frame> newFrame(std::make_shared<Frame>());
 
-                // Grab a frame.
-                if (mDevice->runContinuousCapture(*newFrame)) {
-                    logger->debug("============= FRAME {} =============", newFrame->mFrameNumber);
-                    if (printFrameStats) {
-                        spdlog::debug("============= FRAME {} =============", newFrame->mFrameNumber);
-                    }
+					// Grab a frame.
+					if (mDevice->runContinuousCapture(*newFrame)) {
+						logger->debug("============= FRAME {} =============", newFrame->mFrameNumber);
+						if (printFrameStats) {
+							spdlog::debug("============= FRAME {} =============", newFrame->mFrameNumber);
+						}
 
-                    // If camera type in input is FRAMES or VIDEO.
-                    if (mDevice->mVideoFramesInput) {
-                        // Push the new frame in the framebuffer.
-                        std::unique_lock<std::mutex> lock(*frameBuffer_mutex);
-                        frameBuffer->push_back(newFrame);
-                        if (frameBuffer->size() > 100) {
-                            frameBuffer->pop_front();
-                        }
-                        lock.unlock();
 
-                        // Notify detection thread.
-                        if (pDetection != NULL) {
-                            std::unique_lock<std::mutex> lock2(*detSignal_mutex);
-                            *detSignal = true;
-                            detSignal_condition->notify_one();
-                            lock2.unlock();
-                        }
+						// Push the new frame in the framebuffer.
+						std::unique_lock<std::mutex> lock(*frameBuffer_mutex);
+						frameBuffer->push_back(newFrame);
+						if (frameBuffer->size() > 100) {
+							frameBuffer->pop_front();
+						}
+						lock.unlock();
 
-                        // Slow down the time in order to give more time to the
-                        // detection process.
-                        int twait = 100;
-                        if (mvp.INPUT_TIME_INTERVAL == 0 && mfp.INPUT_TIME_INTERVAL > 0)
-                            twait = mfp.INPUT_TIME_INTERVAL;
-                        else if (mvp.INPUT_TIME_INTERVAL > 0 && mfp.INPUT_TIME_INTERVAL == 0)
-                            twait = mvp.INPUT_TIME_INTERVAL;
+						// Notify detection thread.
+						if (pDetection) {
+							std::unique_lock<std::mutex> lock2(*detSignal_mutex);
+							*detSignal = true;
+							detSignal_condition->notify_one();
+							lock2.unlock();
+						}
+
+						// Slow down the time in order to give more time to the
+						// detection process.
+						int twait = 100;
+						if (mvp.INPUT_TIME_INTERVAL == 0 && mfp.INPUT_TIME_INTERVAL > 0)
+							twait = mfp.INPUT_TIME_INTERVAL;
+						else if (mvp.INPUT_TIME_INTERVAL > 0 && mfp.INPUT_TIME_INTERVAL == 0)
+							twait = mvp.INPUT_TIME_INTERVAL;
+#ifdef WINDOWS
+						Sleep(twait);
+#else
+						usleep(twait * 1000);
+#endif
+					}
+				} else {
+					// Get current time in seconds.
+                    TimeDate::Date now;
+					int currentTimeInSec = now.hours * 3600 + now.minutes * 60 + (int)now.seconds;
+
+					// Detect day or night.
+					TimeMode currentTimeMode = NONE;
+
+					if ((currentTimeInSec > mStopSunsetTime) || (currentTimeInSec < mStartSunriseTime)) {
+						currentTimeMode = NIGHT;
+					} else if ((currentTimeInSec > mStartSunriseTime) && (currentTimeInSec < mStopSunsetTime)) {
+						currentTimeMode = DAY;
+					}
+
+                    if (mdtp.DET_MODE != DAYNIGHT && mdtp.DET_MODE != currentTimeMode) {
+                        int twait = 1000;
 #ifdef WINDOWS
                         Sleep(twait);
 #else
                         usleep(twait * 1000);
 #endif
+                        continue;
+                    }
 
-                    } else {
-                        // Get current time in seconds.
-                        int currentTimeInSec = newFrame->mDate.hours * 3600 + newFrame->mDate.minutes * 60 + (int)newFrame->mDate.seconds;
+					// Container for the grabbed image.
+					std::shared_ptr<Frame> newFrame(std::make_shared<Frame>());
 
-                        // Detect day or night.
-                        TimeMode currentTimeMode = NONE;
+					// Grab a frame.
+					if (mDevice->runContinuousCapture(*newFrame)) {
+						logger->debug("============= FRAME {} =============", newFrame->mFrameNumber);
+						if (printFrameStats) {
+							spdlog::debug("============= FRAME {} =============", newFrame->mFrameNumber);
+						}
 
-                        if ((currentTimeInSec > mStopSunsetTime) || (currentTimeInSec < mStartSunriseTime)) {
-                            currentTimeMode = NIGHT;
-                        } else if ((currentTimeInSec > mStartSunriseTime) && (currentTimeInSec < mStopSunsetTime)) {
-                            currentTimeMode = DAY;
-                        }
 
                         // If exposure control is not active, the new frame can
                         // be shared with others threads.
@@ -235,7 +257,7 @@ void AcqThread::run()
                             lock.unlock();
 
                             // Notify detection thread.
-                            if (pDetection != nullptr) {
+                            if (pDetection) {
                                 if (previousTimeMode != currentTimeMode && mdtp.DET_MODE != DAYNIGHT) {
                                     logger->info("TimeMode has changed ! ");
                                     std::unique_lock<std::mutex> lock2(*detSignal_mutex);
@@ -250,13 +272,12 @@ void AcqThread::run()
                                     lock2.unlock();
                                 }
                             }
-                            cleanStatus = false;
                         } else {
                             exposureControlStatus = false;
                             // Exposure control is active, the new frame can't
                             // be shared with others threads.
                             // If detection process exists
-                            if (pDetection != NULL) {
+                            if (pDetection) {
                                 std::unique_lock<std::mutex> lock(*detSignal_mutex);
                                 *detSignal = false;
                                 lock.unlock();
@@ -284,7 +305,7 @@ void AcqThread::run()
                             computeSunTimes();
                         }
 
-                        if (previousTimeMode != currentTimeMode && mdtp.DET_MODE != DAYNIGHT) {
+                        if (previousTimeMode != currentTimeMode && mdtp.DET_MODE == DAYNIGHT) {
                             exposureControlStatus = true;
                             if (currentTimeMode == DAY) { // In DAYTIME : Apply minimum available exposure time.
                                 logger->info("Apply day exposure time : {}", mDevice->getDayExposureTime());
@@ -298,9 +319,9 @@ void AcqThread::run()
                                 mDevice->setCameraNightGain();
                             }
                         }
-
-                        previousTimeMode = currentTimeMode;
                     }
+
+					previousTimeMode = currentTimeMode;
                 }
 
                 tacq = (((double)getTickCount() - tacq) / getTickFrequency()) * 1000;
@@ -492,7 +513,8 @@ bool AcqThread::prepareAcquisitionOnDevice()
 
     // CHECK SUNRISE AND SUNSET TIMES.
 
-    if ((mCurrentTime > mStopSunsetTime) || (mCurrentTime < mStartSunriseTime)) {
+    if (mdtp.DET_MODE == NIGHT || 
+       (mdtp.DET_MODE == DAYNIGHT && ((mCurrentTime > mStopSunsetTime) || (mCurrentTime < mStartSunriseTime)))) {
         logger->info("DAYTIME         :  NO");
         logger->info("AUTO EXPOSURE   :  NO");
         logger->info("EXPOSURE TIME   :  {}", mDevice->getNightExposureTime());
@@ -501,7 +523,8 @@ bool AcqThread::prepareAcquisitionOnDevice()
             return false;
         if (!mDevice->setCameraNightGain())
             return false;
-    } else if ((mCurrentTime > mStopSunriseTime && mCurrentTime < mStartSunsetTime)) {
+    } else if (mdtp.DET_MODE == DAY ||
+              (mdtp.DET_MODE == DAYNIGHT && ((mCurrentTime > mStopSunriseTime && mCurrentTime < mStartSunsetTime)))) {
         logger->info("DAYTIME         :  YES");
         logger->info("AUTO EXPOSURE   :  NO");
         logger->info("EXPOSURE TIME   :  {}", mDevice->getDayExposureTime());
