@@ -144,6 +144,7 @@ void AcqThread::run()
     logger->info("========== START ACQUISITION THREAD ==========");
     logger->info("==============================================");
 
+    double frameTime = 1000 / mcp.ACQ_FPS;
     try {
         // Exposure adjustment variables.
         bool exposureControlStatus = false;
@@ -325,6 +326,16 @@ void AcqThread::run()
                 }
 
                 tacq = (((double)getTickCount() - tacq) / getTickFrequency()) * 1000;
+                if (tacq < frameTime) {
+                    double delay = frameTime - tacq;
+#ifdef WINDOWS
+                    Sleep(delay);
+#else
+                    usleep(delay * 1000);
+#endif
+                    tacq = frameTime;
+                }
+
                 if (printFrameStats) {
                     spdlog::debug("[ TIME ACQ ] : {} ms ~cFPS({})",
                         tacq, (1.0 / (tacq / 1000.0)));
