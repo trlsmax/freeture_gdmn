@@ -1429,6 +1429,11 @@ void CfgParam::loadDetParam()
         param.det.errormsg.push_back("- DET_SAVE_GE_INFOS : Fail to load value.");
     }*/
 
+    if (!cfg.Get("DET_SPEED", param.det.DET_SPEED)) {
+        e = true;
+        param.det.errormsg.push_back("- DET_SPEED : Fail to load value.");
+    }
+
     if (!e) param.det.status = true;
 
 }

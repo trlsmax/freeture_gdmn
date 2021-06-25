@@ -643,7 +643,8 @@ std::shared_ptr<GlobalEvent> DetectionTemporal::runDetection(std::shared_ptr<Fra
 				if ((*itGE)->LEList.size() >= 5 && 
 					(*itGE)->continuousGoodPos(4) && 
 					(*itGE)->ratioFramesDist() && 
-					(*itGE)->negPosClusterFilter()) {
+					(*itGE)->negPosClusterFilter() &&
+                    (*itGE)->Speed(mdtp.DET_DOWNSAMPLE_ENABLED) > mdtp.DET_SPEED) {
 					mGeToSave = itGE;
 					saveSignal = true;
 					break;
