@@ -337,10 +337,10 @@ void AcqThread::run()
                 }
 
                 if (printFrameStats) {
-                    spdlog::debug("[ TIME ACQ ] : {} ms ~cFPS({})",
+                    spdlog::debug("[ TIME ACQ ] : {:.3f} ms ~cFPS({:.3f})",
                         tacq, (1.0 / (tacq / 1000.0)));
                 }
-                logger->debug(" [ TIME ACQ ] : {}", tacq);
+                logger->debug(" [ TIME ACQ ] : {:.3f}", tacq);
                 mMustStopMutex.lock();
                 stop = mMustStop;
                 mMustStopMutex.unlock();
