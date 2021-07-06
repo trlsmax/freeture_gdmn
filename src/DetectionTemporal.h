@@ -89,8 +89,6 @@ public:
 
     std::shared_ptr<GlobalEvent> runDetection(std::shared_ptr<Frame> c);
 
-    void saveDetectionInfos(GlobalEvent* ge, string path);
-
     void resetDetection(bool loadNewDataSet);
 
 

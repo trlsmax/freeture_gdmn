@@ -71,6 +71,7 @@ private:
 	std::list<std::shared_ptr<Frame>> frames;
 	float geDist;
 	float geSpeed;
+    detectionParam* pdp;
 
 
 public:
@@ -95,7 +96,7 @@ public:
 	vector<bool>         clusterNegPos;
 
 
-	GlobalEvent(TimeDate::Date frameDate, std::shared_ptr<Frame> currentFrame, int frameHeight, int frameWidth, cv::Scalar c);
+	GlobalEvent(TimeDate::Date frameDate, std::shared_ptr<Frame> currentFrame, int frameHeight, int frameWidth, cv::Scalar c, detectionParam* dp);
 
 	~GlobalEvent();
 
@@ -141,5 +142,6 @@ public:
 	int FirstEventFrameNbr(void) { return firstEventFrameNbr; }
 	int LastEventFrameNbr(void) { return lastEventFrameNbr; }
 	void GetFramesBeforeEvent(CDoubleLinkedList<std::shared_ptr<Frame>>::Iterator current);
-	float Speed(bool isDownSample = false) { return isDownSample ? (geSpeed * 2.f) : geSpeed; }
+	float Speed(void) { return pdp->DET_DOWNSAMPLE_ENABLED ? (geSpeed * 2.f) : geSpeed; }
+    detectionParam* DetectionParam(void) { return pdp; }
 };

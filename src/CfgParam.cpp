@@ -1687,57 +1687,57 @@ int CfgParam::getDeviceID()
     return param.DEVICE_ID.first.first;
 }
 
-dataParam CfgParam::getDataParam()
+dataParam& CfgParam::getDataParam()
 {
     return param.data;
 }
 
-logParam CfgParam::getLogParam()
+logParam& CfgParam::getLogParam()
 {
     return param.log;
 }
 
-framesParam CfgParam::getFramesParam()
+framesParam& CfgParam::getFramesParam()
 {
     return param.framesInput;
 }
 
-videoParam CfgParam::getVidParam()
+videoParam& CfgParam::getVidParam()
 {
     return param.vidInput;
 }
 
-cameraParam CfgParam::getCamParam()
+cameraParam& CfgParam::getCamParam()
 {
     return param.camInput;
 }
 
-detectionParam CfgParam::getDetParam()
+detectionParam& CfgParam::getDetParam()
 {
     return param.det;
 }
 
-stackParam CfgParam::getStackParam()
+stackParam& CfgParam::getStackParam()
 {
     return param.st;
 }
 
-stationParam CfgParam::getStationParam()
+stationParam& CfgParam::getStationParam()
 {
     return param.station;
 }
 
-fitskeysParam CfgParam::getFitskeysParam()
+fitskeysParam& CfgParam::getFitskeysParam()
 {
     return param.fitskeys;
 }
 
-mailParam CfgParam::getMailParam()
+mailParam& CfgParam::getMailParam()
 {
     return param.mail;
 }
 
-parameters CfgParam::getAllParam()
+parameters& CfgParam::getAllParam()
 {
     return param;
 }

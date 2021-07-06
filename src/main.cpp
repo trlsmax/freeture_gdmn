@@ -76,6 +76,7 @@
 #include "Frame.h"
 #include "ImgProcessing.h"
 #include "SaveImg.h"
+#include "ResultSaver.h"
 
 #define BOOST_NO_SCOPED_ENUMS
 using namespace std;
@@ -534,6 +535,7 @@ int main(int argc, const char** argv)
 
                     AcqThread* acqThread = NULL;
                     DetThread* detThread = NULL;
+                    ResultSaver saver(&cfg.getStationParam(), &cfg.getDataParam());
 
                     try {
                         // Create detection thread.
@@ -548,7 +550,7 @@ int main(int argc, const char** argv)
                                 cfg.getDataParam(), cfg.getMailParam(),
                                 cfg.getStationParam(),
                                 cfg.getFitskeysParam(),
-                                cfg.getCamParam().ACQ_FORMAT);
+                                cfg.getCamParam().ACQ_FORMAT, &saver);
 
                             detThread->setFrameStats(frameStats);
                             if (!detThread->startThread())

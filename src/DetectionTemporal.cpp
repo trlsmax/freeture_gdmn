@@ -145,117 +145,6 @@ void DetectionTemporal::createDebugDirectories(bool cleanDebugDirectory)
 	}
 }
 
-void DetectionTemporal::saveDetectionInfos(GlobalEvent* ge, string path)
-{
-	// Save ge map.
-	if (mdtp.temporal.DET_SAVE_GEMAP) {
-		SaveImg::saveBMP(ge->getMapEvent(), path + "GeMap");
-		debugFiles.push_back("GeMap.bmp");
-	}
-
-	// Save dir map.
-	if (mdtp.temporal.DET_SAVE_DIRMAP) {
-		SaveImg::saveBMP(ge->getDirMap(), path + "DirMap");
-	}
-
-	// Save infos.
-	/*if(mdtp.temporal.DET_SAVE_GE_INFOS) {
-
-		std::ofstream infFile;
-		string infFilePath = p + "GeInfos.txt";
-		infFile.open(infFilePath.c_str());
-
-		infFile << " * AGE              : " << mGeToSave->getAge() << "\n";
-		infFile << " * AGE LAST ELEM    : " << mGeToSave->getAgeLastElem() <<
-	"\n"; infFile << " * LINEAR STATE     : " << mGeToSave->getLinearStatus()
-	<< "\n"; infFile << " * BAD POS          : " << mGeToSave->getBadPos() <<
-	"\n"; infFile << " * GOOD POS         : " << mGeToSave->getGoodPos() <<
-	"\n"; infFile << " * NUM FIRST FRAME  : " << mGeToSave->getNumFirstFrame()
-	<< "\n"; infFile << " * NUM LAST FRAME   : " <<
-	mGeToSave->getNumLastFrame()    << "\n";
-
-		float d = sqrt(pow(mGeToSave->mainPts.back().x -
-	mGeToSave->mainPts.front().x,2.0) + pow(mGeToSave->mainPts.back().y -
-	mGeToSave->mainPts.front().y,2.0)); infFile << "\n * Distance between
-	first and last  : " << d << "\n";
-
-		infFile << "\n * MainPoints position : \n";
-		for(int i = 0; i < mGeToSave->mainPts.size(); i++)
-			infFile << "    (" << mGeToSave->mainPts.at(i).x << ";"<<
-	mGeToSave->mainPts.at(i).y << ")\n";
-
-		infFile << "\n * MainPoints details : \n";
-		for(int i = 0; i < mGeToSave->listA.size(); i++){
-
-			infFile << "    A(" << mGeToSave->listA.at(i).x << ";" <<
-	mGeToSave->listA.at(i).y << ") ----> "; infFile << "    B(" <<
-	mGeToSave->listB.at(i).x << ";" << mGeToSave->listB.at(i).y << ") ---->
-	"; infFile << "    C(" << mGeToSave->listC.at(i).x << ";" <<
-	mGeToSave->listC.at(i).y << ")\n"; infFile << "    u(" <<
-	mGeToSave->listu.at(i).x << ";" << mGeToSave->listu.at(i).y << ") ";
-			infFile << "    v(" << mGeToSave->listv.at(i).x << ";" <<
-	mGeToSave->listv.at(i).y << ")\n"; infFile << "    Angle rad between BA' /
-	BC = " << mGeToSave->listRad.at(i) << "\n"; infFile << "    Angle between
-	BA' / BC = " << mGeToSave->listAngle.at(i) << "\n";
-
-			if(mGeToSave->mainPtsValidity.at(i)) infFile << "    NEW POSITION
-	ACCEPTED\n\n"; else infFile << "    NEW POSITION REFUSED\n\n";
-
-		}
-
-		infFile.close();
-	}*/
-
-	// Save positions.
-	if (mdtp.temporal.DET_SAVE_POS) {
-		std::ofstream posFile;
-		// string posFilePath = p + "positions.txt";
-		string posFilePath = path + "_positions.csv";
-
-		posFile.open(posFilePath.c_str());
-
-		// Number of the first frame associated to the event.
-		int numFirstFrame = -1;
-
-		// write csv header
-		string line = "frame_id,datetime,x_fits,y_fits\n";
-		posFile << line;
-
-		for (auto itLe = ge->LEList.begin(); itLe != ge->LEList.end(); ++itLe) {
-			if (numFirstFrame == -1)
-				numFirstFrame = (*itLe)->getNumFrame();
-
-			Point pos = (*itLe)->getMassCenter();
-
-			int positionY = 0;
-			if (mdtp.DET_DOWNSAMPLE_ENABLED) {
-				pos *= 2;
-				positionY = mPrevFrame.rows * 2 - pos.y;
-			}
-			else {
-				positionY = mPrevFrame.rows - pos.y;
-			}
-
-			// NUM_FRAME    POSITIONX     POSITIONY (inversed)
-			// string line = Conversion::intToString(itLE->getNumFrame() -
-			// numFirstFrame + nbFramesAround) + "               (" +
-			// Conversion::intToString(pos.x)  + ";" +
-			// Conversion::intToString(positionY) + ")                 " +
-			// TimeDate::getIsoExtendedFormatDate(itLE->mFrameAcqDate)+ "\n";
-			string line = Conversion::intToString((*itLe)->getNumFrame() - numFirstFrame + ge->FramesAround()) + 
-				"," + TimeDate::getIsoExtendedFormatDate((*itLe)->mFrameAcqDate) + 
-				"," + Conversion::intToString(pos.x) + 
-				"," + Conversion::intToString(positionY) + "\n";
-			posFile << line;
-		}
-
-		line = "Speed," + std::to_string(ge->Speed(mdtp.DET_DOWNSAMPLE_ENABLED)) + ",pixel/s";
-		posFile << line;
-
-		posFile.close();
-	}
-}
-
 vector<string> DetectionTemporal::getDebugFiles() { return debugFiles; }
 
 std::shared_ptr<GlobalEvent> DetectionTemporal::runDetection(std::shared_ptr<Frame> c)
@@ -601,7 +490,7 @@ std::shared_ptr<GlobalEvent> DetectionTemporal::runDetection(std::shared_ptr<Fra
 					// cout << "Deleting last available color ... "<< endl;
 					// availableGeColor.pop_back();
 					// cout << "Creating new GE ... "<< endl;
-					std::shared_ptr<GlobalEvent> newGE(std::make_shared<GlobalEvent>(c->mDate, c, currImg.rows, currImg.cols, geColor));
+					std::shared_ptr<GlobalEvent> newGE(std::make_shared<GlobalEvent>(c->mDate, c, currImg.rows, currImg.cols, geColor, &mdtp));
 					// cout << "Adding current LE ... "<< endl;
 					newGE->addLE(*itLE);
 					// cout << "Pushing new LE to GE list  ... "<< endl;
@@ -644,7 +533,7 @@ std::shared_ptr<GlobalEvent> DetectionTemporal::runDetection(std::shared_ptr<Fra
 					(*itGE)->continuousGoodPos(4) && 
 					(*itGE)->ratioFramesDist() && 
 					(*itGE)->negPosClusterFilter() &&
-                    (*itGE)->Speed(mdtp.DET_DOWNSAMPLE_ENABLED) > mdtp.DET_SPEED) {
+                    (*itGE)->Speed() > mdtp.DET_SPEED) {
 					mGeToSave = itGE;
 					saveSignal = true;
 					break;
@@ -680,7 +569,8 @@ std::shared_ptr<GlobalEvent> DetectionTemporal::runDetection(std::shared_ptr<Fra
 					if ((*itGE)->LEList.size() >= 5 && 
 						(*itGE)->continuousGoodPos(4) && 
 						(*itGE)->ratioFramesDist() && 
-						(*itGE)->negPosClusterFilter()) {
+						(*itGE)->negPosClusterFilter() &&
+                        (*itGE)->Speed() > mdtp.DET_SPEED) {
 						mGeToSave = itGE;
 						saveSignal = true;
 						break;

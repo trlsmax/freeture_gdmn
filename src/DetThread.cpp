@@ -43,10 +43,8 @@ using namespace cv;
 DetThread::DetThread(CDoubleLinkedList<std::shared_ptr<Frame>>* fb, mutex* fb_m, condition_variable* fb_c, 
 	bool* dSignal, mutex* dSignal_m, condition_variable* dSignal_c, 
 	detectionParam dtp, dataParam dp, mailParam mp, stationParam sp,
-	fitskeysParam fkp, CamPixFmt pfmt)
-	:
-
-	pDetMthd(nullptr)
+	fitskeysParam fkp, CamPixFmt pfmt, ResultSaver* rs)
+	: pDetMthd(nullptr)
 	, mForceToReset(false)
 	, mMustStop(false)
 	, mIsRunning(false)
@@ -55,6 +53,7 @@ DetThread::DetThread(CDoubleLinkedList<std::shared_ptr<Frame>>* fb, mutex* fb_m,
 	, mCurrentDataSetLocation("")
 	, mNbWaitFrames(0)
 	, mInterruptionStatus(false)
+    , m_ResultSaver(rs)
 {
 	frameBuffer = fb;
 	frameBuffer_mutex = fb_m;
@@ -142,10 +141,16 @@ void DetThread::run()
 	mIsRunning = true;
 	bool eventToComplete = false;
 	auto currentFrame = frameBuffer->end();
-	std::list<std::tuple<std::shared_ptr<GlobalEvent>, time_point<system_clock, std::chrono::seconds>, CDoubleLinkedList<std::shared_ptr<Frame>>::Iterator>> listGlobalEvent;
+	std::list<std::tuple<std::shared_ptr<GlobalEvent>, 
+              time_point<system_clock, std::chrono::seconds>, 
+              CDoubleLinkedList<std::shared_ptr<Frame>>::Iterator>> listGlobalEvent;
+#define GLOBAL_EVENT    0
+#define EVENT_TIME      1
+#define EVENT_FRAME     2
 	// Flag to indicate that an event must be complete with more frames.
 	// Reference date to count time to complete an event.
-	time_point<system_clock, std::chrono::seconds> refTimeSec = time_point_cast<std::chrono::seconds>(system_clock::now());
+	time_point<system_clock, std::chrono::seconds> refTimeSec = 
+        time_point_cast<std::chrono::seconds>(system_clock::now());
 
 	logger->info("==============================================");
 	logger->info("=========== Start detection thread ===========");
@@ -210,29 +215,17 @@ void DetThread::run()
                             if (!listGlobalEvent.empty()) {
                                 time_point<system_clock, std::chrono::seconds> nowTimeSec = time_point_cast<std::chrono::seconds>(system_clock::now());
                                 for (auto itr = listGlobalEvent.begin(); itr != listGlobalEvent.end();) {
-                                    std::get<0>(*itr)->AddFrame(lastFrame, false);
-                                    if ((nowTimeSec - std::get<1>(*itr)).count() > mdtp.DET_TIME_AROUND) {
+                                    std::get<GLOBAL_EVENT>(*itr)->AddFrame(lastFrame, false);
+                                    if ((nowTimeSec - std::get<EVENT_TIME>(*itr)).count() > mdtp.DET_TIME_AROUND) {
                                         //logger->info("Event completed.");
                                         spdlog::info("Event completed.");
-                                        // Build event directory.
-                                        mEventDate = std::get<0>(*itr)->getDate();
 
-                                        if (buildEventDataDirectory())
-                                            logger->info("Success to build event directory.");
-                                        else
-                                            logger->error("Fail to build event directory.");
-
-                                        // Save event.
-                                        logger->info("Saving event...");
-                                        string eventBase = mstp.TELESCOP + "_" + TimeDate::getYYYY_MM_DD_hhmmss(mEventDate);
                                         std::unique_lock<std::mutex> lock3(*frameBuffer_mutex);
-                                        std::get<0>(*itr)->GetFramesBeforeEvent(std::get<2>(*itr));
+                                        std::get<GLOBAL_EVENT>(*itr)->GetFramesBeforeEvent(std::get<EVENT_FRAME>(*itr));
                                         lock3.unlock();
-                                        pDetMthd->saveDetectionInfos(std::get<0>(*itr).get(), mEventPath + eventBase);
-                                        if (!saveEventData(std::get<0>(*itr).get()))
-                                            spdlog::info("Error saving event data.");
-                                        else
-                                            spdlog::info("Success to save event !");
+                                        if (m_ResultSaver) {
+                                            m_ResultSaver->AddResult(std::get<0>(*itr));
+                                        }
                                         itr = listGlobalEvent.erase(itr);
 
                                         // Reset detection.
@@ -325,216 +318,6 @@ void DetThread::run()
 }
 
 bool DetThread::getRunStatus() { return mIsRunning; }
-
-bool DetThread::buildEventDataDirectory()
-{
-	namespace fs = ghc::filesystem;
-	auto logger = spdlog::get("det_logger");
-
-	// eventDate is the date of the first frame attached to the event.
-	// string YYYYMMDD = TimeDate::getYYYYMMDD(mEventDate);
-
-	// Data location.
-	fs::path p(mdp.DATA_PATH);
-
-	// Create data directory for the current day.
-	// string fp = mdp.DATA_PATH + mStationName + "_" + YYYYMMDD +"/";
-	string fp = DataPaths::getSessionPath(mdp.DATA_PATH, mEventDate);
-	fs::path p0(fp);
-
-	// Events directory.
-	// string fp1 = "events/";
-	string fp1 = "";
-	fs::path p1(fp + fp1);
-
-	// Current event directory with the format : STATION_AAAAMMDDThhmmss_UT
-	// string fp2 = mStationName + "_" +
-	// TimeDate::getYYYYMMDDThhmmss(mEventDate) + "_UT/"; string fp2 =
-	// mStationName + "_" + "detection" + "_" +
-	// TimeDate::getYYYY_MM_DD_hhmmss(mEventDate);
-	string fp2 = mstp.TELESCOP + "_" + TimeDate::getYYYY_MM_DD_hhmmss(mEventDate) + "/";
-	fs::path p2(fp + fp1 + fp2);
-	fs::create_directories(p2);
-
-	// Final path used by an other function to save event data.
-	mEventPath = fp + fp1 + fp2;
-
-	// Check if data path specified in the configuration file exists.
-	if (fs::exists(p)) {
-		// Check DataLocation/STATION_AAMMDD/
-		if (fs::exists(p0)) {
-			// Check DataLocation/STATION_AAMMDD/events/
-			if (fs::exists(p1)) {
-				// Check
-				// DataLocation/STATION_AAMMDD/events/STATION_AAAAMMDDThhmmss_UT/
-				if (!fs::exists(p2)) {
-					// Create
-					// DataLocation/STATION_AAMMDD/events/STATION_AAAAMMDDThhmmss_UT/
-					if (!fs::create_directories(p2)) {
-						logger->error("Fail to create : {}", p2.c_str());
-						return false;
-					}
-					else {
-						logger->info("Success to create : {}", p2.c_str());
-						return true;
-					}
-				}
-			}
-			else {
-				// Create DataLocation/STATION_AAMMDD/events/
-				if (!fs::create_directories(p1)) {
-					logger->error("Fail to create : {}", p1.c_str());
-					return false;
-				}
-				else {
-					// Create
-					// DataLocation/STATION_AAMMDD/events/STATION_AAAAMMDDThhmmss_UT/
-					if (!fs::create_directories(p2)) {
-						logger->error("Fail to create : {}", p2.c_str());
-						return false;
-					}
-					else {
-						logger->info("Success to create : {}", p2.c_str());
-						return true;
-					}
-				}
-			}
-		}
-		else {
-			// Create DataLocation/STATION_AAMMDD/
-			if (!fs::create_directories(p0)) {
-				logger->error("Fail to create : {}", p0.c_str());
-				return false;
-			}
-			else {
-				// Create DataLocation/STATION_AAMMDD/events/
-				if (!fs::create_directories(p1)) {
-					logger->error("Fail to create : {}", p1.c_str());
-					return false;
-				}
-				else {
-					// Create
-					// DataLocation/STATION_AAMMDD/events/STATION_AAAAMMDDThhmmss_UT/
-					if (!fs::create_directories(p2)) {
-						logger->error("Fail to create : {}", p2.c_str());
-						return false;
-					}
-					else {
-						logger->info("Success to create : {}", p2.c_str());
-						return true;
-					}
-				}
-			}
-		}
-	}
-	else {
-		// Create DataLocation/
-		if (!fs::create_directories(p)) {
-			logger->error("Fail to create : {}", p.c_str());
-			return false;
-		}
-		else {
-			// Create DataLocation/STATION_AAMMDD/
-			if (!fs::create_directories(p0)) {
-				logger->error("Fail to create : {}", p0.c_str());
-				return false;
-			}
-			else {
-				// Create DataLocation/STATION_AAMMDD/events/
-				if (!fs::create_directories(p1)) {
-					logger->error("Fail to create : {}", p1.c_str());
-					return false;
-				}
-				else {
-					// Create
-					// DataLocation/STATION_AAMMDD/events/STATION_AAAAMMDDThhmmss_UT/
-					if (!fs::create_directories(p2)) {
-						logger->error("Fail to create : {}", p2.c_str());
-						return false;
-					}
-					else {
-						logger->info("Success to create : {}", p1.c_str());
-						return true;
-					}
-				}
-			}
-		}
-	}
-
-	return true;
-}
-
-bool DetThread::saveEventData(GlobalEvent* ge)
-{
-	auto logger = spdlog::get("det_logger");
-
-	string eventBase = mstp.TELESCOP + "_" + TimeDate::getYYYY_MM_DD_hhmmss(mEventDate);
-
-	// Count number of digit on nbTotalFramesToSave.
-	int n = ge->Frames().size();
-	int nbDigitOnNbTotalFramesToSave = 0;
-
-	while (n != 0) {
-		n /= 10;
-		++nbDigitOnNbTotalFramesToSave;
-	}
-
-    spdlog::info("> First frame to save  : {}", ge->Frames().front()->mFrameNumber);
-	spdlog::info("> Lst frame to save    : {}", ge->Frames().back()->mFrameNumber);
-	spdlog::info("> First event frame    : {}", ge->FirstEventFrameNbr());
-	spdlog::info("> Last event frame     : {}", ge->LastEventFrameNbr());
-	spdlog::info("> Frames before        : {}", ge->FramesAround());
-	spdlog::info("> Frames after         : {}", ge->FramesAround());
-	spdlog::info("> Total frames to save : {}", ge->Frames().size());
-	spdlog::info("> Total digit          : {}", nbDigitOnNbTotalFramesToSave);
-
-	// Init video avi
-	VideoWriter* video = NULL;
-
-	if (mdtp.DET_SAVE_AVI) {
-		// third parameter controls FPS. Might need to change that one (used to
-		// be 5 fps).
-		video = new VideoWriter(
-			mEventPath + eventBase + "_video.avi",
-			VideoWriter::fourcc('M', 'J', 'P', 'G'), 30,
-			Size(static_cast<int>(ge->Frames().front()->mImg.cols),
-				static_cast<int>(ge->Frames().front()->mImg.rows)),
-			false);
-	}
-
-	// Init sum.
-	Stack stack = Stack(mdp.FITS_COMPRESSION_METHOD, mfkp, mstp);
-
-	// Loop framebuffer.
-	for (auto frame : ge->Frames()) {
-		if (mdtp.DET_SAVE_AVI) {
-			if (video->isOpened()) {
-				if (frame->mImg.type() != CV_8UC1) {
-					Mat iv = Conversion::convertTo8UC1(frame->mImg);
-					video->write(iv);
-				}
-				else {
-					video->write(frame->mImg);
-				}
-			}
-		}
-
-		// Add frame to the event's stack.
-		stack.addFrame(*frame);
-	}
-
-	if (mdtp.DET_SAVE_AVI) {
-		if (video != NULL)
-			delete video;
-	}
-
-	// EVENT STACK WITH HISTOGRAM EQUALIZATION
-	if (mdtp.DET_SAVE_SUM_WITH_HIST_EQUALIZATION) {
-		SaveImg::saveJPEG(stack.getStack(), mEventPath + eventBase);
-	}
-
-	return true;
-}
 
 void DetThread::setFrameStats(bool frameStats)
 {

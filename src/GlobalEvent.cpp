@@ -36,26 +36,28 @@
 #include "GlobalEvent.h"
 using namespace cv;
 
-GlobalEvent::GlobalEvent(TimeDate::Date frameDate, std::shared_ptr<Frame> currentFrame, int frameHeight, int frameWidth, Scalar c)
+GlobalEvent::GlobalEvent(TimeDate::Date frameDate, std::shared_ptr<Frame> currentFrame, int frameHeight, int frameWidth, Scalar c, detectionParam* dp)
+	:geAge(0)
+	,geAgeLastLE(0)
+	,geDate(frameDate)
+	,newLeAdded(false)
+	,geMap(Mat(frameHeight, frameWidth, CV_8UC1, Scalar(0)))
+	,geMapColor(Mat(frameHeight, frameWidth, CV_8UC3, Scalar(0, 0, 0)))
+	,geDirMap(Mat(frameHeight, frameWidth, CV_8UC3, Scalar(0, 0, 0)))
+	,geLinear(true)
+	,geBadPoint(0)
+	,geGoodPoint(0)
+	,geShifting(0)
+	,geColor(c)
+	,geDir(Point(0, 0))
+    ,firstEventFrameNbr(currentFrame->mFrameNumber)
+    ,nbFramesAround(0)
+	,geDist(0.f)
+	,geSpeed(0.f)
+    ,pdp(dp)
+
 {
-	geAge = 0;
-	geAgeLastLE = 0;
-	geDate = frameDate;
-	newLeAdded = false;
-	geMap = Mat(frameHeight, frameWidth, CV_8UC1, Scalar(0));
-	geMapColor = Mat(frameHeight, frameWidth, CV_8UC3, Scalar(0, 0, 0));
-	geDirMap = Mat(frameHeight, frameWidth, CV_8UC3, Scalar(0, 0, 0));
-	geLinear = true;
-	geBadPoint = 0;
-	geGoodPoint = 0;
-	geShifting = 0;
-	geColor = c;
-	geDir = Point(0, 0);
 	frames.push_back(currentFrame);
-    firstEventFrameNbr = currentFrame->mFrameNumber;
-    nbFramesAround = 0;
-	geDist = 0.f;
-	geSpeed = 0.f;
 }
 
 GlobalEvent::~GlobalEvent()
@@ -150,7 +152,7 @@ bool GlobalEvent::addLE(std::shared_ptr<LocalEvent> le)
 					float thetaDeg = (180 * acos(thetaRad)) / 3.14159265358979323846;
 					listAngle.push_back(thetaDeg);
 
-					if (thetaDeg > 40.0 || thetaDeg < -40.0) {
+					if (thetaDeg > 20.0 || thetaDeg < -20.0) {
 						geBadPoint++;
 						if (geBadPoint == 2) {
 							geLinear = false;

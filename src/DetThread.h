@@ -53,6 +53,7 @@
 #include "SParam.h"
 #include "Stack.h"
 #include "TimeDate.h"
+#include "ResultSaver.h"
 
 using namespace ghc;
 using namespace std;
@@ -72,8 +73,6 @@ private:
     bool mWaitFramesToCompleteEvent;
     int mNbWaitFrames;
     string mCfgPath;
-    string mEventPath; // Path of the last detected event.
-    TimeDate::Date mEventDate; // Date of the last detected event.
     int mNbDetection; // Number of detection.
     bool mInterruptionStatus;
     mutex mInterruptionStatusMutex;
@@ -94,6 +93,7 @@ private:
     int mNbFramesAround; // Number of frames to keep around an event.
 
     bool printFrameStats;
+    ResultSaver* m_ResultSaver;
 
 public:
     DetThread(CDoubleLinkedList<std::shared_ptr<Frame>>* fb,
@@ -107,7 +107,8 @@ public:
         mailParam mp,
         stationParam sp,
         fitskeysParam fkp,
-        CamPixFmt pfmt);
+        CamPixFmt pfmt,
+        ResultSaver* rs);
 
     ~DetThread();
 

@@ -18,7 +18,7 @@ file(
 	../src/*
 	../libs/date/tz.cpp
 )
-list(FILTER SRC_FILES EXCLUDE REGEX ".*ResultSaver.cpp$")
+#list(FILTER SRC_FILES EXCLUDE REGEX ".*ResultSaver.cpp$")
 message("> SOURCES : " ${SRC_FILES})
 #------------------------------------------------
 # To see the command line CMake produces :
@@ -57,11 +57,11 @@ message("> Processor : " ${CMAKE_SYSTEM_PROCESSOR})
 #------------------------------------------------
 # Executable.
 add_executable( ${EXE_NAME} ${SRC_FILES} )
-target_include_directories( ${EXE_NAME} PRIVATE ../libs ../libs/circular_buffer)
+target_include_directories( ${EXE_NAME} PRIVATE ../libs)
 #------------------------------------------------
 
 include(CheckCXXCompilerFlag)
-CHECK_CXX_COMPILER_FLAG("-std=c++11" COMPILER_SUPPORTS_CXX11)
+CHECK_CXX_COMPILER_FLAG("-std=c++17" COMPILER_SUPPORTS_CXX17)
 CHECK_CXX_COMPILER_FLAG("-std=c++0x" COMPILER_SUPPORTS_CXX0X)
 IF(COMPILER_SUPPORTS_CXX11)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")

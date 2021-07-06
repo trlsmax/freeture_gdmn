@@ -60,9 +60,6 @@ class Stack {
         CamPixFmt       format;
         bool            varExpTime;
         double          sumExpTime;
-        string          mFitsCompressionMethod;
-        stationParam mstp;
-        fitskeysParam mfkp;
 
     public :
 
@@ -70,7 +67,7 @@ class Stack {
         * Constructor.
         *
         */
-        Stack(string fitsCompression, fitskeysParam fkp, stationParam stp);
+        Stack();
 
         /**
         * Destructor.
@@ -93,18 +90,6 @@ class Stack {
         TimeDate::Date getDateFirstFrame(){return mDateFirstFrame;};
 
         /**
-        * Save stack.
-        *
-        * @param fitsHeader fits keywords.
-        * @param path Location where to save the stack.
-        * @param stackMthd Method to use to create stack.
-        * @param stationName Name of the station.
-        * @param stackReduction Enable stack reduction.
-        * @return Success status.
-        */
-        bool saveStack(string path, StackMeth stackMthd, bool stackReduction);
-
-        /**
         * Get number of frames in the stack.
         *
         * @return Number of frames.
@@ -112,14 +97,4 @@ class Stack {
         int getNbFramesStacked(){return curFrames;};
 
         cv::Mat& getStack() {return stack;};
-
-        /**
-        * Reduce stack in float 32 bits to 8 or 16 bits.
-        *
-        * @param bzero (Physical_value = image_value * bscale + bzero)
-        * @param bscale
-        * @return Reduced image.
-        */
-        cv::Mat reductionByFactorDivision(float &bzero, float &bscale);
-
 };

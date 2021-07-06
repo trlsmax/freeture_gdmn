@@ -102,27 +102,27 @@ public :
 
     int getDeviceID();
 
-    dataParam getDataParam();
+    dataParam& getDataParam();
 
-    logParam getLogParam();
+    logParam& getLogParam();
 
-    framesParam getFramesParam();
+    framesParam& getFramesParam();
 
-    videoParam getVidParam();
+    videoParam& getVidParam();
 
-    cameraParam getCamParam();
+    cameraParam& getCamParam();
 
-    detectionParam getDetParam();
+    detectionParam& getDetParam();
 
-    stackParam getStackParam();
+    stackParam& getStackParam();
 
-    stationParam getStationParam();
+    stationParam& getStationParam();
 
-    fitskeysParam getFitskeysParam();
+    fitskeysParam& getFitskeysParam();
 
-    mailParam getMailParam();
+    mailParam& getMailParam();
 
-    parameters getAllParam();
+    parameters& getAllParam();
 
     bool deviceIdIsCorrect();
 

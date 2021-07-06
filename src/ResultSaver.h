@@ -9,16 +9,25 @@
 
 class ResultSaver
 {
-	ResultSaver(void);
+public:
+	ResultSaver(stationParam* stp, dataParam* mdp);
 	~ResultSaver(void);
 	void Terminate(void);
-	void AddResult(std::vector<std::shared_ptr<Frame>> frames, std::shared_ptr<GlobalEvent> ge);
-	void Run(void);
+	void AddResult(std::shared_ptr<GlobalEvent> ge);
+	void Run();
+
 private:
-	std::thread* thd;
+    void saveDetectionInfos(GlobalEvent* ge, string path);
+    bool saveEventData(GlobalEvent* ge, std::string EventPath);
+    std::string buildEventDataDirectory(TimeDate::Date eventDate);
+
+private:
+    std::thread* thd;
 	std::mutex mtx;
 	std::condition_variable cv;
-	std::queue<std::pair<std::vector<std::shared_ptr<Frame>>, std::shared_ptr<GlobalEvent>>> queue;
+	std::queue<std::shared_ptr<GlobalEvent>> queue;
 	std::atomic_bool running;
+    stationParam* mstp;
+    dataParam* mdp;
 };
 

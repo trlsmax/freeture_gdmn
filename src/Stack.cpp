@@ -37,13 +37,15 @@
 #include <spdlog/spdlog.h>
 using namespace cv;
 
-Stack::Stack(string fitsCompression, fitskeysParam fkp, stationParam stp) :
-        mFitsCompressionMethod(fitsCompression),
-        curFrames(0), varExpTime(false),
-        sumExpTime(0.0), gainFirstFrame(0), expFirstFrame(0), fps(0), format(MONO8)
+Stack::Stack()
+    : curFrames(0)
+    , varExpTime(false)
+    , sumExpTime(0.0)
+    , gainFirstFrame(0)
+    , expFirstFrame(0)
+    , fps(0)
+    , format(MONO8)
 {
-    mfkp = fkp;
-    mstp = stp;
 }
 
 Stack::~Stack()
@@ -88,49 +90,3 @@ void Stack::addFrame(Frame &i)
     }
 }
 
-Mat Stack::reductionByFactorDivision(float &bzero, float &bscale)
-{
-    Mat newMat;
-    switch (format) {
-        case MONO12 : {
-            newMat = Mat(stack.rows, stack.cols, CV_16SC1, Scalar(0));
-            float factor = (4095.0f * curFrames) / 4095.0f;
-
-            bscale = factor;
-            bzero = 32768 * factor;
-            float *ptr;
-            short *ptr2;
-
-            for (int i = 0; i < stack.rows; i++) {
-                ptr = stack.ptr<float>(i);
-                ptr2 = newMat.ptr<short>(i);
-                for (int j = 0; j < stack.cols; j++) {
-                    if (cvRound(ptr[j] / factor) - 32768 > 32767) {
-                        ptr2[j] = 32767;
-                    } else {
-                        ptr2[j] = cvRound(ptr[j] / factor) - 32768;
-                    }
-                }
-            }
-        }
-            break;
-        default : {
-            newMat = Mat(stack.rows, stack.cols, CV_8UC1, Scalar(0));
-            float factor = curFrames;
-            bscale = factor;
-            bzero = 0;
-            float *ptr;
-            unsigned char *ptr2;
-
-            for (int i = 0; i < stack.rows; i++) {
-                ptr = stack.ptr<float>(i);
-                ptr2 = newMat.ptr<unsigned char>(i);
-                for (int j = 0; j < stack.cols; j++) {
-                    ptr2[j] = cvRound(ptr[j] / factor);
-                }
-            }
-        }
-    }
-
-    return newMat;
-}
